@@ -1,3 +1,9 @@
+#System settings with database credentials.
+settings.json
+
+# VS code workspace settings
+.vscode
+
 # GNURadio outputs
 *.out
 *.hdr
