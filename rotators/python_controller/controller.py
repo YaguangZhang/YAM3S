@@ -5,26 +5,38 @@
 #   - fetch servo adjustment PWM signal info from the server,
 #   - send the servo adjustment info to Arduino.
 #
-# Developed and tested using Python 3.8.1 (with libraries pyserial, sshtunnel and
-# mysql-connector-python) and MySQL Community Server - GPL v8.0.19 on Windows 10
-# machines. To install the Python libraries, one could run:
+# Developed and tested using Python 3.8.1 (with libraries SciPy, pyserial,
+# sshtunnel and mysql-connector-python) and MySQL Community Server - GPL v8.0.19
+# on Windows 10 machines. To install the Python libraries, one could run:
 #
-#   pip install pyserial sshtunnel mysql-connector-python
+#   pip install scipy pyserial sshtunnel mysql-connector-python
 #
 # Yaguang Zhang, Purdue University, 2020/02/03
 
+# For locating path, timing and logging.
 import os
 import time
 import logging, sys
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
+# For loading settings.
 import json
 
+# For locating the serial port of the Arduino board.
 import serial.tools.list_ports
 
+# For ssh port forwarding.
 import paramiko
-import mysql.connector
 from sshtunnel import SSHTunnelForwarder
+
+# For MySQL operations.
+import mysql.connector
+
+# For receiving float type data over the serial port.
+import struct
+
+# For comprehending quaternions.
+from scipy.spatial.transform import Rotation as R
 
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
@@ -57,7 +69,7 @@ def waitForDataOnSerial(ser):
     '''
     Sleep until there is data shown up on the input serial port.
     '''
-    timeToWaitBeforeCheckAgainInS = 0.1
+    timeToWaitBeforeCheckAgainInS = 0.01
     while(ser.inWaiting()==0):
         time.sleep(timeToWaitBeforeCheckAgainInS)
 
@@ -73,8 +85,15 @@ def printAllSerData(ser, surfix=''):
         else:
             break
 
+def sendSerialDataToDatabase(ser, cur, printSurfix=''):
+    # The first line should be byte stream for the sensor data.
+    newline = ser.readline()
+    sys.getsizeof(newline)
+
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
-    pass
+    newline = ser.readline()
+    if len(newline) > 0:
+        print(surfix + newline.decode("utf-8") )
 
 def main():
     curDirName = os.path.dirname(__file__)
@@ -85,7 +104,7 @@ def main():
         settings = json.load(settings)
 
     # Step 1:
-    #   Connect with the arduino.
+    #   - Connect with the arduino.
 
     # We will scan all the serial ports and connect to the first Arduino found.
     # For the SparkFun Blackboard, something like "USB-SERIAL CH340 (COM4)" will
@@ -102,7 +121,8 @@ def main():
 
         # Fetching and displaying all incoming messages from the Arduino.
         waitForDataOnSerial(serPortToArduino)
-        printAllSerData(serPortToArduino, '    Arduino (Raw Message): ')
+        printAllSerData(serPortToArduino,
+            '    Arduino (Raw Message during Initialization): ')
 
         print("Signalling Arduino to start the auto antenna alignment procedure ...")
         serPortToArduino.write(b"r")
@@ -121,7 +141,7 @@ def main():
         print("Succeeded!")
 
         # Step 2:
-        #   Connect to the remote mySQL database.
+        #   - Connect to the remote mySQL database.
 
         # For easy and secure remote access of the database, we will ssh forward the
         # MySQL port from the remote server to localhost (the controller of the
@@ -138,25 +158,31 @@ def main():
             ssh_username=settings['controllers'][controllerSide]['ssh']['user_account'],
             ssh_pkey=ssh_public_key,
             remote_bind_address=(settings['server']['mysql_instance']['host'],
-                settings['server']['mysql_instance']['port']),
-            local_bind_address=(settings['controllers']['mysql_tunnel']['host'],
-                settings['controllers']['mysql_tunnel']['port'])
-        ) as remoteMySql:
+                settings['server']['mysql_instance']['port'])
+        ) as tunnelledMySql:
             print("Succeeded!\n\nConnecting to remote database ...")
-            with mysql.connector.connect(
+            databaseConnection = mysql.connector.connect(
+                host='localhost',
+                port=tunnelledMySql.local_bind_port,
+                database=settings['server']['mysql_instance']['database'],
                 user=settings['controllers'][controllerSide]['database_credential']['username'],
                 password=settings['controllers'][controllerSide]['database_credential']['password'],
-                host=settings['controllers']['mysql_tunnel']['host'],
-                port=settings['controllers']['mysql_tunnel']['port'],
-                database=settings['server']['mysql_instance']['database']
-            ) as databaseConnection
-                databaseCur = databaseConnection.cursor()
-                print("Succeeded!\nAuto antenna alignment initiated ...")
+                auth_plugin=settings['server']['mysql_instance']['auth_plugin'])
 
+            databaseCur = databaseConnection.cursor()
+            print("Succeeded!\nAuto antenna alignment initiated ...")
+
+            try:
                 while(True):
+                    # We are expecting one IMU data update in every 0.1 s.
                     waitForDataOnSerial(serPortToArduino)
                     # Fetching and processing all incoming messages from the Arduino.
-                    adjustServosWhenNecessary(ser, cur, '    Arduino: ')
+                    sendSerialDataToDatabase(ser, cur, '    Arduino (Sensor Data): ')
+                    # Compute and adjust the PMW signal if necessary.
+                    adjustServosWhenNecessary(ser, cur, '    Arduino (Motor Adjustment): ')
+            finally:
+                databaseConnection.close()
+                databaseCur.close()
 
 if __name__ == '__main__':
     main()

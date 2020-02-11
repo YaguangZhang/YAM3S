@@ -37,9 +37,16 @@
 #define MID_PWM 1500
 #define MIN_PWM 1000
 
+// For converting data to bytes for serial communication.
+#define FLOAT_SIZE_IN_BYTE 4
+#define UNSIGNED_LONG_SIZE_IN_BYTE 4
+
 // X axis - Tilt (changing elevation); Z axis - Pan (changing azimuth).
 int wpmPinX = 9, wpmPinZ = 10;
 Servo servoX, servoZ;
+
+// IMU data update period in millisecond.
+int imuPeriodInMs = 100;
 
 // Communication parameters.
 int serialBoundRate = 9600;
@@ -58,7 +65,9 @@ void setup() {
   if (vrImu.begin() == false) {
     Serial.println(
       "#Error: VR IMU (BNO080) not detected at default I2C address!");
-    while (1);
+    Serial.println(
+      "#Freezing ...");
+    while (true);
   }
 
   Wire.setClock(i2cClockInHz);
@@ -83,11 +92,14 @@ void setup() {
       }
     }
   }
+
+  vrImu.enableRotationVector(imuPeriodInMs);
+  vrImu.enableMagnetometer(imuPeriodInMs);
 }
 
 void loop() {
   // React to the command from the serial port.
-  while (Serial.available() > 0) {
+  if (Serial.available() > 0) {
     programCommand = toLowerCase(Serial.read());
 
     switch (programCommand) {
@@ -100,9 +112,91 @@ void loop() {
         break;
     }
   }
+
+  // Read the IMU data.
+  if (vrImu.dataAvailable() == true)
+  {
+    unsigned long upTime = millis();
+
+    float quatReal = vrImu.getQuatReal();
+    float quatI = vrImu.getQuatI();
+    float quatJ = vrImu.getQuatJ();
+    float quatK = vrImu.getQuatK();
+    float quatRadianAccuracy = vrImu.getQuatRadianAccuracy();
+
+    float magX = vrImu.getMagX();
+    float magY = vrImu.getMagY();
+    float magZ = vrImu.getMagZ();
+    char magAccuracy = interpAccuracyLevel(vrImu.getMagAccuracy());
+
+    // Send data over serial.+
+    sendUnsignedLong(upTime);
+    sendFloat(quatReal);
+    sendFloat(quatI);
+    sendFloat(quatJ);
+    sendFloat(quatK);
+    sendFloat(quatRadianAccuracy);
+    sendFloat(magX);
+    sendFloat(magY);
+    sendFloat(magZ);
+    Serial.println(magAccuracy);
+
+    // Debug info.
+    Serial.print(F("#Rotation vector: "));
+    Serial.print(quatReal, 2);
+    Serial.print(F(","));
+    Serial.print(quatI, 2);
+    Serial.print(F(","));
+    Serial.print(quatJ, 2);
+    Serial.print(F(","));
+    Serial.print(quatK, 2);
+    Serial.print(F(","));
+    Serial.print(quatRadianAccuracy, 2);
+
+    Serial.println();
+
+    Serial.print(F("#Magnetometer: "));
+    Serial.print(magX, 2);
+    Serial.print(F(","));
+    Serial.print(magY, 2);
+    Serial.print(F(","));
+    Serial.print(magZ, 2);
+    Serial.print(F(","));
+    Serial.print(F(","));
+    Serial.print(magAccuracy, 2);
+
+    Serial.println();
+  }
 }
 
 void printCommand (char command) {
   Serial.print(F("#Command received: "));
   Serial.println(command);
+}
+
+//Given an accuracy number, interpret what it means
+char interpAccuracyLevel(byte accuracyNumber)
+{
+  if(accuracyNumber == 0) Serial.print(F("U"));      // Unreliable
+  else if(accuracyNumber == 1) Serial.print(F("L")); // Low
+  else if(accuracyNumber == 2) Serial.print(F("M")); // Medium
+  else if(accuracyNumber == 3) Serial.print(F("H")); // High
+}
+
+void sendFloat (float arg)
+{
+  // Get access to the float as a byte-array.
+  byte * data = (byte *) &arg;
+
+  // Write the data to the serial.
+  Serial.write(data, FLOAT_SIZE_IN_BYTE);
+}
+
+void sendUnsignedLong (unsigned long arg)
+{
+  // Get access to the unsigned long as a byte-array.
+  byte * data = (byte *) &arg;
+
+  // Write the data to the serial.
+  Serial.write(data, UNSIGNED_LONG_SIZE_IN_BYTE);
 }

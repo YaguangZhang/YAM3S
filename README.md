@@ -14,8 +14,9 @@ recording, the steps one needs to carry out are listed below.
    `settings.json` file accordingly.
 4. If desired, assign a string label to the measurement recording attempt to
    `measurement_attempt_label` in `settings.json`.
-5. On both the TX and the RX sides, start (i) arduino, (ii) the Python
-   controller on the connect computer.
+5. On both the TX and the RX sides,
+   1. calibrate the IMU module according to <https://cdn.sparkfun.com/assets/c/6/f/4/9/Sensor-Calibration-Procedure-v1.1.pdf>
+   2. start (i) Arduino, and (ii) the Python controller on the connect computer.
 
 ## Contact
 
