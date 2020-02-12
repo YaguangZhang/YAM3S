@@ -13,10 +13,14 @@
   - s/S for stopping the program.
 
  We will collect sensor information and send it to the controller via the serial
- port. Debug information are prefixed by "#", while sensor readings are
- organized as:
+ port. Debug information are prefixed by "#", while IMU readings are organized
+ as a byte stream prefixed by "+":
 
   - IMU
+
+ and GPS data are organized as a byte stream prefixed by "@":
+
+  - Lat
 
  We used SparkFun Blackboard and Arduino IDE v1.8.1 to run this sketch. Required
  Arduino libraries include:
@@ -31,6 +35,9 @@
 
 #include <Wire.h>
 #include "SparkFun_BNO080_Arduino_Library.h"
+
+// For enabling debugging over the serial port.
+#define DEBUG false
 
 // The PWM range for the continuous servos.
 #define MAX_PWM 2000
@@ -72,6 +79,9 @@ void setup() {
 
   Wire.setClock(i2cClockInHz);
 
+  vrImu.enableRotationVector(imuPeriodInMs);
+  vrImu.enableMagnetometer(imuPeriodInMs);
+
   // Motors.
   servoX.attach(wpmPinX);
   servoZ.attach(wpmPinZ);
@@ -87,14 +97,11 @@ void setup() {
       if (programCommand == 'r') {
         // Send 'r' to indicate this is a RX.
         Serial.println('r');
-        Serial.println(F("#Auto antenna alignment procedure started!"));
+        Serial.println(F("#Auto cantenna alignment procedure started!"));
         break;
       }
     }
   }
-
-  vrImu.enableRotationVector(imuPeriodInMs);
-  vrImu.enableMagnetometer(imuPeriodInMs);
 }
 
 void loop() {
@@ -127,9 +134,10 @@ void loop() {
     float magX = vrImu.getMagX();
     float magY = vrImu.getMagY();
     float magZ = vrImu.getMagZ();
-    char magAccuracy = interpAccuracyLevel(vrImu.getMagAccuracy());
+    byte magAccuracy = vrImu.getMagAccuracy();
 
-    // Send data over serial.+
+    // Send data over serial.
+    Serial.print(F("+"));
     sendUnsignedLong(upTime);
     sendFloat(quatReal);
     sendFloat(quatI);
@@ -139,33 +147,41 @@ void loop() {
     sendFloat(magX);
     sendFloat(magY);
     sendFloat(magZ);
-    Serial.println(magAccuracy);
+    printAccuracyLevel(magAccuracy);
+
+    Serial.println();
 
     // Debug info.
-    Serial.print(F("#Rotation vector: "));
-    Serial.print(quatReal, 2);
-    Serial.print(F(","));
-    Serial.print(quatI, 2);
-    Serial.print(F(","));
-    Serial.print(quatJ, 2);
-    Serial.print(F(","));
-    Serial.print(quatK, 2);
-    Serial.print(F(","));
-    Serial.print(quatRadianAccuracy, 2);
+    if (DEBUG) {
+      Serial.print(F("#Up time: "));
+      Serial.print((float) upTime, 0);
 
-    Serial.println();
+      Serial.println(" ms");
 
-    Serial.print(F("#Magnetometer: "));
-    Serial.print(magX, 2);
-    Serial.print(F(","));
-    Serial.print(magY, 2);
-    Serial.print(F(","));
-    Serial.print(magZ, 2);
-    Serial.print(F(","));
-    Serial.print(F(","));
-    Serial.print(magAccuracy, 2);
+      Serial.print(F("#Rotation vector: "));
+      Serial.print(quatReal, 2);
+      Serial.print(F(","));
+      Serial.print(quatI, 2);
+      Serial.print(F(","));
+      Serial.print(quatJ, 2);
+      Serial.print(F(","));
+      Serial.print(quatK, 2);
+      Serial.print(F(","));
+      Serial.print(quatRadianAccuracy, 2);
 
-    Serial.println();
+      Serial.println();
+
+      Serial.print(F("#Magnetometer: "));
+      Serial.print(magX, 2);
+      Serial.print(F(","));
+      Serial.print(magY, 2);
+      Serial.print(F(","));
+      Serial.print(magZ, 2);
+      Serial.print(F(","));
+      printAccuracyLevel(magAccuracy);
+
+      Serial.println();
+    }
   }
 }
 
@@ -174,29 +190,24 @@ void printCommand (char command) {
   Serial.println(command);
 }
 
-//Given an accuracy number, interpret what it means
-char interpAccuracyLevel(byte accuracyNumber)
+// Given an accuracy number, print to serial what it means.
+void printAccuracyLevel(byte accuracyNumber)
 {
-  if(accuracyNumber == 0) Serial.print(F("U"));      // Unreliable
-  else if(accuracyNumber == 1) Serial.print(F("L")); // Low
-  else if(accuracyNumber == 2) Serial.print(F("M")); // Medium
-  else if(accuracyNumber == 3) Serial.print(F("H")); // High
+  if(accuracyNumber == 0) Serial.print(F("U"));       // Unreliable
+  else if(accuracyNumber == 1) Serial.print(F("L"));  // Low
+  else if(accuracyNumber == 2) Serial.print(F("M"));  // Medium
+  else if(accuracyNumber == 3) Serial.print(F("H"));  // High
 }
 
 void sendFloat (float arg)
 {
-  // Get access to the float as a byte-array.
-  byte * data = (byte *) &arg;
-
-  // Write the data to the serial.
-  Serial.write(data, FLOAT_SIZE_IN_BYTE);
+  // Get access to the float as a byte-array and write the data to the serial.
+  Serial.write((byte *) &arg, FLOAT_SIZE_IN_BYTE);
 }
 
 void sendUnsignedLong (unsigned long arg)
 {
-  // Get access to the unsigned long as a byte-array.
-  byte * data = (byte *) &arg;
-
-  // Write the data to the serial.
-  Serial.write(data, UNSIGNED_LONG_SIZE_IN_BYTE);
+  // Get access to the unsigned long as a byte-array and write the data to the
+  // serial.
+  Serial.write((byte *) &arg, UNSIGNED_LONG_SIZE_IN_BYTE);
 }

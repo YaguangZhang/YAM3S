@@ -38,6 +38,11 @@ import struct
 # For comprehending quaternions.
 from scipy.spatial.transform import Rotation as R
 
+# For receiving data from serial communication.
+CHAR_SIZE_IN_BYTE = 1
+FLOAT_SIZE_IN_BYTE = 4
+UNSIGNED_LONG_SIZE_IN_BYTE = 4
+
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
     Keep scanning all the serial ports until one with description constaining
@@ -65,11 +70,10 @@ def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
 
     return serPortToDevice
 
-def waitForDataOnSerial(ser):
+def waitForDataOnSerial(ser, timeToWaitBeforeCheckAgainInS=0.01):
     '''
     Sleep until there is data shown up on the input serial port.
     '''
-    timeToWaitBeforeCheckAgainInS = 0.01
     while(ser.inWaiting()==0):
         time.sleep(timeToWaitBeforeCheckAgainInS)
 
@@ -85,15 +89,72 @@ def printAllSerData(ser, surfix=''):
         else:
             break
 
+def receiveCharFromSerial(ser):
+    '''
+    Receive one char value from the serial byte stream.
+    '''
+    return ser.read(CHAR_SIZE_IN_BYTE).decode("utf-8")
+
+def receiveUnsignedLongFromSerial(ser):
+    '''
+    Receive unsigned long value from the serial byte stream.
+    '''
+    return struct.unpack('<L', ser.read(UNSIGNED_LONG_SIZE_IN_BYTE))[0]
+
+def receiveFloatFromSerial(ser):
+    '''
+    Receive one float value from the serial byte stream.
+    '''
+    return struct.unpack('<f', ser.read(FLOAT_SIZE_IN_BYTE))[0]
+
+def readImuPackageFromSerial(ser):
+    '''
+    Receive one IMU data package from the serial byte stream.
+    '''
+    upTime   = receiveUnsignedLongFromSerial(ser)
+    quatReal = receiveFloatFromSerial(ser)
+    quatI    = receiveFloatFromSerial(ser)
+    quatJ    = receiveFloatFromSerial(ser)
+    quatK    = receiveFloatFromSerial(ser)
+    quatRadianAccuracy = receiveFloatFromSerial(ser)
+    magX         = receiveFloatFromSerial(ser)
+    magY         = receiveFloatFromSerial(ser)
+    magZ         = receiveFloatFromSerial(ser)
+    magAccuracy  = receiveCharFromSerial(ser)
+
+    endOfPackage = ser.readline()
+    assert endOfPackage == b'\r\n', "Expecting end of line!"
+
+    return (upTime, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
+            magX, magY, magZ, magAccuracy)
+
+def readGpsPackageFromSerial():
+    '''
+    Receive one GPS data package from the serial byte stream.
+    '''
+    pass
+
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
-    # The first line should be byte stream for the sensor data.
-    newline = ser.readline()
-    sys.getsizeof(newline)
+    # We are expecting one IMU data update in every 0.1 s.
+    waitForDataOnSerial(ser)
+    # Read in the indication byte and proceed accordingling.
+    while(ser.inWaiting()>0):
+        indicationByte = receiveCharFromSerial(ser)
+        if (indicationByte == '+'):
+            # IMU data package.
+            (upTime, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
+                magX, magY, magZ, magAccuracy) = readImuPackageFromSerial(ser)
+        elif (indicationByte == '@'):
+            () = readGpsPackageFromSerial(ser)
+        elif (indicationByte == '#'):
+            # A message is received.
+            print(printSurfix + ser.readline().decode("utf-8"))
+        else:
+            logging.warning("Unknown serial data stream type"
+                + indicationByte + "!")
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
-    newline = ser.readline()
-    if len(newline) > 0:
-        print(surfix + newline.decode("utf-8") )
+    pass
 
 def main():
     curDirName = os.path.dirname(__file__)
@@ -143,13 +204,14 @@ def main():
         # Step 2:
         #   - Connect to the remote mySQL database.
 
-        # For easy and secure remote access of the database, we will ssh forward the
-        # MySQL port from the remote server to localhost (the controller of the
-        # rotator). Please make sure the public ssh key of the controller machine is
-        # registered at the server.
+        # For easy and secure remote access of the database, we will ssh forward
+        # the MySQL port from the remote server to localhost (the controller of
+        # the rotator). Please make sure the public ssh key of the controller
+        # machine is registered at the server.
         print("\nForwarding port for accessing remote database ...")
         ssh_public_key = paramiko.RSAKey.from_private_key_file(
-            bytes(settings['controllers'][controllerSide]['ssh']['private_key_dir'], encoding='utf-8'),
+            bytes(settings['controllers'][controllerSide]['ssh']['private_key_dir'],
+                encoding='utf-8'),
             password=settings['controllers'][controllerSide]['ssh']['private_key_password'])
 
         with SSHTunnelForwarder(
@@ -174,12 +236,13 @@ def main():
 
             try:
                 while(True):
-                    # We are expecting one IMU data update in every 0.1 s.
-                    waitForDataOnSerial(serPortToArduino)
-                    # Fetching and processing all incoming messages from the Arduino.
-                    sendSerialDataToDatabase(ser, cur, '    Arduino (Sensor Data): ')
-                    # Compute and adjust the PMW signal if necessary.
-                    adjustServosWhenNecessary(ser, cur, '    Arduino (Motor Adjustment): ')
+                    # Fetching and processing all incoming messages from the
+                    # Arduino.
+                    sendSerialDataToDatabase(serPortToArduino, databaseCur,
+                        '    Arduino (Sensor Data): ')
+                    # Compute and adjust the PMW signals if necessary.
+                    adjustServosWhenNecessary(serPortToArduino, databaseCur,
+                        '    Arduino (Motor Adjustment): ')
             finally:
                 databaseConnection.close()
                 databaseCur.close()
