@@ -14,7 +14,12 @@ recording, the steps one needs to carry out are listed below.
    `settings.json` file accordingly.
 4. If desired, assign a string label to the measurement recording attempt to
    `measurement_attempt_label` in `settings.json`.
-5. On both the TX and the RX sides,
+5. On the RX side, initiated the CKT-GPS (Ref: <https://learn.sparkfun.com/tutorials/gps-rtk2-hookup-guide>)
+   1. connect to the CKT-GPS board via USB
+   2. open u-center and connect to the correct COM port
+   3. adjust the baud rate of UART2 to 115200 (for streaming RTCM correction data via Bluetooth Mate)
+   4. start correction data streaming on the phone using the NTRIP app
+6. On both the TX and the RX sides,
    1. calibrate the IMU module according to <https://cdn.sparkfun.com/assets/c/6/f/4/9/Sensor-Calibration-Procedure-v1.1.pdf>
    2. start (i) Arduino, and (ii) the Python controller on the connect computer.
 
