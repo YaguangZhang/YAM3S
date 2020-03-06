@@ -16,7 +16,11 @@
  port. Debug information are prefixed by "#", while IMU readings are organized
  as a byte stream prefixed by "+":
 
-  - IMU
+  - upTime
+  - quatReal, quatI, quatJ, quatK
+  - quatRadianAccuracy
+  - magX, magY, magZ
+  - magAccuracy
 
  and GPS data are organized as a byte stream prefixed by "@":
 
@@ -35,9 +39,10 @@
 
 #include <Wire.h>
 #include "SparkFun_BNO080_Arduino_Library.h"
+#include "SparkFun_Ublox_Arduino_Library.h"
 
 // For enabling debugging over the serial port.
-#define DEBUG false
+#define DEBUG true
 
 // The PWM range for the continuous servos.
 #define MAX_PWM 2000
@@ -45,8 +50,10 @@
 #define MIN_PWM 1000
 
 // For converting data to bytes for serial communication.
-#define FLOAT_SIZE_IN_BYTE 4
+#define FLOAT_SIZE_IN_BYTE         4
 #define UNSIGNED_LONG_SIZE_IN_BYTE 4
+#define LONG_SIZE_IN_BYTE          4
+#define BYTE_SIZE_IN_BYTE          1
 
 // X axis - Tilt (changing elevation); Z axis - Pan (changing azimuth).
 int wpmPinX = 9, wpmPinZ = 10;
@@ -54,33 +61,56 @@ Servo servoX, servoZ;
 
 // IMU data update period in millisecond.
 int imuPeriodInMs = 100;
+// GPS data update period in millisecond.
+int gpsPeriodInMs = 100;
 
 // Communication parameters.
-int serialBoundRate = 9600;
-long i2cClockInHz = 400000;
+long serialBoundRate = 115200;
+long i2cClockInHz    = 400000;
+
 // For receiving command via the serial port from the controller.
 char programCommand = 0;
 
-// Fetch orientation data from the VR IMU.
+// For orientation data from the VR IMU.
 BNO080 vrImu;
 
+// RTK GPS.
+SFE_UBLOX_GPS rtkGps;
+
 void setup() {
-  // Sensors.
+  // Serial COM.
   Serial.begin(serialBoundRate);
+  //Wait for the controller to open terminal.
+  while (!Serial);
+
+  // I2C.
   Wire.begin();
-
-  if (vrImu.begin() == false) {
-    Serial.println(
-      "#Error: VR IMU (BNO080) not detected at default I2C address!");
-    Serial.println(
-      "#Freezing ...");
-    while (true);
-  }
-
   Wire.setClock(i2cClockInHz);
 
+  // IMU.
+  if (vrImu.begin() == false) {
+    Serial.println(F(
+      "#Error: VR IMU (BNO080) not detected at default I2C address!"));
+    Serial.println(F("#Freezing ..."));
+    while (true);
+  }
   vrImu.enableRotationVector(imuPeriodInMs);
   vrImu.enableMagnetometer(imuPeriodInMs);
+
+  // RTK GPS.
+  if (rtkGps.begin() == false)
+  {
+    Serial.println(F(
+      "#Error: RTK GPS (u-blox) not detected at default I2C address!"));
+    Serial.println(F("#Freezing ..."));
+    while (true);
+  }
+  // Set the I2C port to output UBX only (turn off NMEA noise).
+  rtkGps.setI2COutput(COM_TYPE_UBX);
+  rtkGps.setNavigationFrequency((int) 1000.0/gpsPeriodInMs);
+  // Configure the GPS to update navigation reports automatically.
+  rtkGps.setAutoPVT(true);
+  rtkGps.saveConfiguration();
 
   // Motors.
   servoX.attach(wpmPinX);
@@ -89,6 +119,8 @@ void setup() {
   servoX.writeMicroseconds(MID_PWM);
   servoZ.writeMicroseconds(MID_PWM);
 
+  // If there is no errors in the Arduino initialization, this will be the first
+  // message to the controller.
   Serial.println(F("#Initialization succeeded! "
                    "Waiting for controllor's run command (r)..."));
   while(true) {
@@ -96,8 +128,8 @@ void setup() {
       programCommand = toLowerCase(Serial.read());
       if (programCommand == 'r') {
         // Send 'r' to indicate this is a RX.
-        Serial.println('r');
-        Serial.println(F("#Auto cantenna alignment procedure started!"));
+        Serial.println(F("r"));
+        Serial.println(F("#Auto antenna alignment procedure started!"));
         break;
       }
     }
@@ -121,10 +153,11 @@ void loop() {
   }
 
   // Read the IMU data.
-  if (vrImu.dataAvailable() == true)
-  {
-    unsigned long upTime = millis();
+  if (vrImu.dataAvailable() == true) {
+    // Arduino up time.
+    unsigned long upTimeInMs = millis();
 
+    // Fetch IMU data.
     float quatReal = vrImu.getQuatReal();
     float quatI = vrImu.getQuatI();
     float quatJ = vrImu.getQuatJ();
@@ -136,27 +169,11 @@ void loop() {
     float magZ = vrImu.getMagZ();
     byte magAccuracy = vrImu.getMagAccuracy();
 
-    // Send data over serial.
-    Serial.print(F("+"));
-    sendUnsignedLong(upTime);
-    sendFloat(quatReal);
-    sendFloat(quatI);
-    sendFloat(quatJ);
-    sendFloat(quatK);
-    sendFloat(quatRadianAccuracy);
-    sendFloat(magX);
-    sendFloat(magY);
-    sendFloat(magZ);
-    printAccuracyLevel(magAccuracy);
-
-    Serial.println();
-
     // Debug info.
     if (DEBUG) {
       Serial.print(F("#Up time: "));
-      Serial.print((float) upTime, 0);
-
-      Serial.println(" ms");
+      Serial.print(upTimeInMs);
+      Serial.println(F(" ms"));
 
       Serial.print(F("#Rotation vector: "));
       Serial.print(quatReal, 2);
@@ -182,6 +199,87 @@ void loop() {
 
       Serial.println();
     }
+
+    // Send data over serial.
+    Serial.print(F("+"));
+    sendUnsignedLong(upTimeInMs);
+    sendFloat(quatReal);
+    sendFloat(quatI);
+    sendFloat(quatJ);
+    sendFloat(quatK);
+    sendFloat(quatRadianAccuracy);
+    sendFloat(magX);
+    sendFloat(magY);
+    sendFloat(magZ);
+    printAccuracyLevel(magAccuracy);
+
+    Serial.println();
+  }
+
+  // Read the GPS data.
+  if (rtkGps.getPVT() == true) {
+    // Arduino up time.
+    unsigned long upTimeInMs = millis();
+
+    // Fetch high-precision GPS data.
+    unsigned long timeOfWeekInMs = rtkGps.getTimeOfWeek();
+
+    long latXe7 = rtkGps.getHighResLatitude();
+    long lonXe7 = rtkGps.getHighResLongitude();
+    long altInMmMeanSeaLevel = rtkGps.getMeanSeaLevel();
+    long altInMmEllipsoid = rtkGps.getElipsoid();
+
+    unsigned long horAccuracy = rtkGps.getHorizontalAccuracy();
+    unsigned long verAccuracy = rtkGps.getVerticalAccuracy();
+
+    // Extra information.
+    byte satsInView = rtkGps.getSIV();
+
+    // Debug info.
+    if (DEBUG) {
+      Serial.print(F("#Up time: "));
+      Serial.print(upTimeInMs);
+      Serial.println(F(" ms"));
+
+      Serial.print(F("#GPS Time of the week: "));
+      Serial.print(timeOfWeekInMs);
+      Serial.println(F(" ms"));
+
+      Serial.print(F("#GPS (latXe7, lonXe7): ("));
+      Serial.print(latXe7);
+      Serial.print(F(","));
+      Serial.print(lonXe7);
+      Serial.println(F(")"));
+
+      Serial.print(F("#GPS (altInMmMeanSeaLevel, altInMmEllipsoid): ("));
+      Serial.print(altInMmMeanSeaLevel);
+      Serial.print(F(","));
+      Serial.print(altInMmEllipsoid);
+      Serial.println(F(")"));
+
+      Serial.print(F("#GPS (horAccuracy, verAccuracy): ("));
+      Serial.print(horAccuracy);
+      Serial.print(F(","));
+      Serial.print(verAccuracy);
+      Serial.println(F(")"));
+
+      Serial.print(F("#GPS satellites in view: "));
+      Serial.println(satsInView);
+    }
+
+    // Send data over serial.
+    Serial.print(F("@"));
+    sendUnsignedLong(upTimeInMs);
+    sendUnsignedLong(timeOfWeekInMs);
+    sendLong(latXe7);
+    sendLong(lonXe7);
+    sendLong(altInMmMeanSeaLevel);
+    sendLong(altInMmEllipsoid);
+    sendUnsignedLong(horAccuracy);
+    sendUnsignedLong(verAccuracy);
+    sendByte(satsInView);
+
+    Serial.println();
   }
 }
 
@@ -210,4 +308,16 @@ void sendUnsignedLong (unsigned long arg)
   // Get access to the unsigned long as a byte-array and write the data to the
   // serial.
   Serial.write((byte *) &arg, UNSIGNED_LONG_SIZE_IN_BYTE);
+}
+
+void sendLong (long arg)
+{
+  // Get access to the long as a byte-array and write the data to the serial.
+  Serial.write((byte *) &arg, LONG_SIZE_IN_BYTE);
+}
+
+void sendByte (byte arg)
+{
+  // Get access to the byte as a byte-array and write the data to the serial.
+  Serial.write((byte *) &arg, BYTE_SIZE_IN_BYTE);
 }

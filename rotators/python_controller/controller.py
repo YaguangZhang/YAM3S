@@ -42,6 +42,8 @@ from scipy.spatial.transform import Rotation as R
 CHAR_SIZE_IN_BYTE = 1
 FLOAT_SIZE_IN_BYTE = 4
 UNSIGNED_LONG_SIZE_IN_BYTE = 4
+LONG_SIZE_IN_BYTE = 4
+BYTE_SIZE_IN_BYTE = 1
 
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
@@ -93,25 +95,57 @@ def receiveCharFromSerial(ser):
     '''
     Receive one char value from the serial byte stream.
     '''
-    return ser.read(CHAR_SIZE_IN_BYTE).decode("utf-8")
+    try:
+        return ser.read(CHAR_SIZE_IN_BYTE).decode("utf-8")
+    except:
+        logging.warning("Unable to decode data!")
+        return None
 
 def receiveUnsignedLongFromSerial(ser):
     '''
     Receive unsigned long value from the serial byte stream.
     '''
-    return struct.unpack('<L', ser.read(UNSIGNED_LONG_SIZE_IN_BYTE))[0]
+    try:
+        return struct.unpack('<L', ser.read(UNSIGNED_LONG_SIZE_IN_BYTE))[0]
+    except:
+        logging.warning("Unable to decode data!")
+        return None
+
+def receiveLongFromSerial(ser):
+    '''
+    Receive unsigned long value from the serial byte stream.
+    '''
+    try:
+        return struct.unpack('<l', ser.read(LONG_SIZE_IN_BYTE))[0]
+    except:
+        logging.warning("Unable to decode data!")
+        return None
 
 def receiveFloatFromSerial(ser):
     '''
     Receive one float value from the serial byte stream.
     '''
-    return struct.unpack('<f', ser.read(FLOAT_SIZE_IN_BYTE))[0]
+    try:
+        return struct.unpack('<f', ser.read(FLOAT_SIZE_IN_BYTE))[0]
+    except:
+        logging.warning("Unable to decode data!")
+        return None
+
+def receiveByteFromSerial(ser):
+    '''
+    Receive unsigned long value from the serial byte stream.
+    '''
+    try:
+        return struct.unpack('<B', ser.read(BYTE_SIZE_IN_BYTE))[0]
+    except:
+        logging.warning("Unable to decode data!")
+        return None
 
 def readImuPackageFromSerial(ser):
     '''
     Receive one IMU data package from the serial byte stream.
     '''
-    upTime   = receiveUnsignedLongFromSerial(ser)
+    upTimeInMs   = receiveUnsignedLongFromSerial(ser)
     quatReal = receiveFloatFromSerial(ser)
     quatI    = receiveFloatFromSerial(ser)
     quatJ    = receiveFloatFromSerial(ser)
@@ -125,14 +159,29 @@ def readImuPackageFromSerial(ser):
     endOfPackage = ser.readline()
     assert endOfPackage == b'\r\n', "Expecting end of line!"
 
-    return (upTime, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
+    return (upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
             magX, magY, magZ, magAccuracy)
 
-def readGpsPackageFromSerial():
+def readGpsPackageFromSerial(ser):
     '''
     Receive one GPS data package from the serial byte stream.
     '''
-    pass
+    upTimeInMs     = receiveUnsignedLongFromSerial(ser)
+    timeOfWeekInMs = receiveUnsignedLongFromSerial(ser)
+    latXe7              = receiveLongFromSerial(ser)
+    lonXe7              = receiveLongFromSerial(ser)
+    altInMmMeanSeaLevel = receiveLongFromSerial(ser)
+    altInMmEllipsoid    = receiveLongFromSerial(ser)
+    horAccuracy = receiveUnsignedLongFromSerial(ser)
+    verAccuracy = receiveUnsignedLongFromSerial(ser)
+    satsInView  = receiveByteFromSerial(ser)
+
+    endOfPackage = ser.readline()
+    assert endOfPackage == b'\r\n', "Expecting end of line!"
+
+    return (upTimeInMs, timeOfWeekInMs,
+            latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
+            horAccuracy, verAccuracy, satsInView)
 
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
     # We are expecting one IMU data update in every 0.1 s.
@@ -142,15 +191,19 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
         indicationByte = receiveCharFromSerial(ser)
         if (indicationByte == '+'):
             # IMU data package.
-            (upTime, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
+            (upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
                 magX, magY, magZ, magAccuracy) = readImuPackageFromSerial(ser)
         elif (indicationByte == '@'):
-            () = readGpsPackageFromSerial(ser)
+            # GPS data package.
+            (upTimeInMs, timeOfWeekInMs,
+                latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
+                horAccuracy, verAccuracy,
+                satsInView) = readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
             print(printSurfix + ser.readline().decode("utf-8"))
         else:
-            logging.warning("Unknown serial data stream type"
+            logging.warning("Unknown serial data stream type: "
                 + indicationByte + "!")
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
@@ -234,6 +287,9 @@ def main():
             databaseCur = databaseConnection.cursor()
             print("Succeeded!\nAuto antenna alignment initiated ...")
 
+            # Step 3:
+            #   - Sensor data collection and
+            #   - automatic antenna alignment.
             try:
                 while(True):
                     # Fetching and processing all incoming messages from the
