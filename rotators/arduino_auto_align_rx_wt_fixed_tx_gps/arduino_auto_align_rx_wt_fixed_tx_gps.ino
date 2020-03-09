@@ -234,6 +234,9 @@ void loop() {
 
     // Extra information.
     byte satsInView = rtkGps.getSIV();
+    byte fixType = rtkGps.getFixType();
+
+    // TODO: Speed; heading; time.
 
     // Debug info.
     if (DEBUG) {
@@ -265,6 +268,15 @@ void loop() {
 
       Serial.print(F("#GPS satellites in view: "));
       Serial.println(satsInView);
+
+      Serial.print(F("#GPS fixed type: "));
+      Serial.println(fixType);
+      Serial.println(F("#    0: no fix"));
+      Serial.println(F("#    1: dead reckoning only"));
+      Serial.println(F("#    2: 2D-fix"));
+      Serial.println(F("#    3: 3D-fix"));
+      Serial.println(F("#    4: GNSS + dead reckoning combined"));
+      Serial.println(F("#    5: time only fix"));
     }
 
     // Send data over serial.
@@ -278,6 +290,7 @@ void loop() {
     sendUnsignedLong(horAccuracy);
     sendUnsignedLong(verAccuracy);
     sendByte(satsInView);
+    sendByte(fixType);
 
     Serial.println();
   }

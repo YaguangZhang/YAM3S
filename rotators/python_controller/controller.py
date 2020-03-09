@@ -175,13 +175,14 @@ def readGpsPackageFromSerial(ser):
     horAccuracy = receiveUnsignedLongFromSerial(ser)
     verAccuracy = receiveUnsignedLongFromSerial(ser)
     satsInView  = receiveByteFromSerial(ser)
+    fixType     = receiveByteFromSerial(ser)
 
     endOfPackage = ser.readline()
     assert endOfPackage == b'\r\n', "Expecting end of line!"
 
     return (upTimeInMs, timeOfWeekInMs,
             latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
-            horAccuracy, verAccuracy, satsInView)
+            horAccuracy, verAccuracy, satsInView, fixType)
 
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
     # We are expecting one IMU data update in every 0.1 s.
@@ -198,7 +199,7 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
             (upTimeInMs, timeOfWeekInMs,
                 latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
                 horAccuracy, verAccuracy,
-                satsInView) = readGpsPackageFromSerial(ser)
+                satsInView, fixType) = readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
             print(printSurfix + ser.readline().decode("utf-8"))
