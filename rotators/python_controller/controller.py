@@ -39,11 +39,13 @@ import struct
 from scipy.spatial.transform import Rotation as R
 
 # For receiving data from serial communication.
-CHAR_SIZE_IN_BYTE = 1
-FLOAT_SIZE_IN_BYTE = 4
-UNSIGNED_LONG_SIZE_IN_BYTE = 4
-LONG_SIZE_IN_BYTE = 4
-BYTE_SIZE_IN_BYTE = 1
+CHAR_SIZE_IN_BYTE  = 1          # char <=> unsigned short <=> int8_t
+
+FLOAT_SIZE_IN_BYTE = 4          # float
+UNSIGNED_LONG_SIZE_IN_BYTE = 4  # unsigned long <=> uint32_t
+LONG_SIZE_IN_BYTE  = 4          # long <=> int32_t
+UNSIGNED_INT_SIZE_IN_BYTE  = 2  # unsigned int  <=> uint16_t
+BYTE_SIZE_IN_BYTE  = 1          # byte <=> uint8_t
 
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
@@ -87,7 +89,7 @@ def printAllSerData(ser, surfix=''):
     while True:
         newline = ser.readline()
         if len(newline) > 0:
-            print(surfix + newline.decode("utf-8") )
+            print(surfix + newline.decode("utf-8").rstrip() )
         else:
             break
 
@@ -97,6 +99,16 @@ def receiveCharFromSerial(ser):
     '''
     try:
         return ser.read(CHAR_SIZE_IN_BYTE).decode("utf-8")
+    except:
+        logging.warning("Unable to decode data!")
+        return None
+
+def receiveFloatFromSerial(ser):
+    '''
+    Receive one float value from the serial byte stream.
+    '''
+    try:
+        return struct.unpack('<f', ser.read(FLOAT_SIZE_IN_BYTE))[0]
     except:
         logging.warning("Unable to decode data!")
         return None
@@ -121,12 +133,12 @@ def receiveLongFromSerial(ser):
         logging.warning("Unable to decode data!")
         return None
 
-def receiveFloatFromSerial(ser):
+def receiveUnsignedIntFromSerial(ser):
     '''
-    Receive one float value from the serial byte stream.
+    Receive unsigned int value from the serial byte stream.
     '''
     try:
-        return struct.unpack('<f', ser.read(FLOAT_SIZE_IN_BYTE))[0]
+        return struct.unpack('<H', ser.read(UNSIGNED_INT_SIZE_IN_BYTE))[0]
     except:
         logging.warning("Unable to decode data!")
         return None
@@ -176,13 +188,22 @@ def readGpsPackageFromSerial(ser):
     verAccuracy = receiveUnsignedLongFromSerial(ser)
     satsInView  = receiveByteFromSerial(ser)
     fixType     = receiveByteFromSerial(ser)
+    year  = receiveUnsignedIntFromSerial(ser)
+    month = receiveByteFromSerial(ser)
+    day   = receiveByteFromSerial(ser)
+    hour   = receiveByteFromSerial(ser)
+    minute = receiveByteFromSerial(ser)
+    second = receiveByteFromSerial(ser)
+    millisecond = receiveUnsignedIntFromSerial(ser)
+    nanosecond  = receiveLongFromSerial(ser)
 
     endOfPackage = ser.readline()
     assert endOfPackage == b'\r\n', "Expecting end of line!"
 
     return (upTimeInMs, timeOfWeekInMs,
             latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
-            horAccuracy, verAccuracy, satsInView, fixType)
+            horAccuracy, verAccuracy, satsInView, fixType,
+            year, month, day, hour, minute, second, millisecond, nanosecond)
 
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
     # We are expecting one IMU data update in every 0.1 s.
@@ -199,10 +220,12 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
             (upTimeInMs, timeOfWeekInMs,
                 latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
                 horAccuracy, verAccuracy,
-                satsInView, fixType) = readGpsPackageFromSerial(ser)
+                satsInView, fixType,
+                year, month, day, hour, minute, second,
+                millisecond, nanosecond) = readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
-            print(printSurfix + ser.readline().decode("utf-8"))
+            logging.info(printSurfix + ser.readline().decode("utf-8").rstrip())
         else:
             logging.warning("Unknown serial data stream type: "
                 + indicationByte + "!")

@@ -53,6 +53,7 @@
 #define FLOAT_SIZE_IN_BYTE         4
 #define UNSIGNED_LONG_SIZE_IN_BYTE 4
 #define LONG_SIZE_IN_BYTE          4
+#define UNSIGNED_INT_SIZE_IN_BYTE  2
 #define BYTE_SIZE_IN_BYTE          1
 
 // X axis - Tilt (changing elevation); Z axis - Pan (changing azimuth).
@@ -213,10 +214,14 @@ void loop() {
     sendFloat(magZ);
     printAccuracyLevel(magAccuracy);
 
+    // End of package.
     Serial.println();
   }
 
-  // Read the GPS data.
+  // Read the GPS data. Reference for data types:
+  //   - long <=> int32_t
+  //   - int  <=> int16_t
+  //   - byte <=> int8_t
   if (rtkGps.getPVT() == true) {
     // Arduino up time.
     unsigned long upTimeInMs = millis();
@@ -234,9 +239,19 @@ void loop() {
 
     // Extra information.
     byte satsInView = rtkGps.getSIV();
-    byte fixType = rtkGps.getFixType();
+    byte fixType    = rtkGps.getFixType();
 
-    // TODO: Speed; heading; time.
+    unsigned int year = rtkGps.getYear();
+    byte month        = rtkGps.getMonth();
+    byte day          = rtkGps.getDay();
+    byte hour   = rtkGps.getHour();
+    byte minute = rtkGps.getMinute();
+    byte second = rtkGps.getSecond();
+    unsigned int millisecond = rtkGps.getMillisecond();
+    // This value includes millisecond and can be negative.
+    long nanosecond          = rtkGps.getNanosecond();
+
+    // TODO: Speed; heading.
 
     // Debug info.
     if (DEBUG) {
@@ -277,6 +292,27 @@ void loop() {
       Serial.println(F("#    3: 3D-fix"));
       Serial.println(F("#    4: GNSS + dead reckoning combined"));
       Serial.println(F("#    5: time only fix"));
+
+      Serial.print(F("#Human-readable GPS time: "));
+      Serial.print(year);
+      Serial.print(F("-"));
+      Serial.print(month);
+      Serial.print(F("-"));
+      Serial.print(day);
+      Serial.print(F(" "));
+      Serial.print(hour);
+      Serial.print(F(":"));
+      Serial.print(minute);
+      Serial.print(F(":"));
+      Serial.print(second);
+      Serial.print(F("."));
+      //Pretty print leading zeros.
+      if (millisecond < 100) Serial.print(F("0"));
+      if (millisecond < 10)  Serial.print(F("0"));
+      Serial.println(millisecond);
+
+      Serial.print(F("#GPS nano seconds: "));
+      Serial.println(nanosecond);
     }
 
     // Send data over serial.
@@ -291,7 +327,16 @@ void loop() {
     sendUnsignedLong(verAccuracy);
     sendByte(satsInView);
     sendByte(fixType);
+    sendUnsignedInt(year);
+    sendByte(month);
+    sendByte(day);
+    sendByte(hour);
+    sendByte(minute);
+    sendByte(second);
+    sendUnsignedInt(millisecond);
+    sendLong(nanosecond);
 
+    // End of package.
     Serial.println();
   }
 }
@@ -327,6 +372,13 @@ void sendLong (long arg)
 {
   // Get access to the long as a byte-array and write the data to the serial.
   Serial.write((byte *) &arg, LONG_SIZE_IN_BYTE);
+}
+
+void sendUnsignedInt (unsigned int arg)
+{
+  // Get access to the unsigned long as a byte-array and write the data to the
+  // serial.
+  Serial.write((byte *) &arg, UNSIGNED_INT_SIZE_IN_BYTE);
 }
 
 void sendByte (byte arg)
