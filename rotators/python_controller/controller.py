@@ -178,14 +178,17 @@ def readGpsPackageFromSerial(ser):
     '''
     Receive one GPS data package from the serial byte stream.
     '''
+
     upTimeInMs     = receiveUnsignedLongFromSerial(ser)
     timeOfWeekInMs = receiveUnsignedLongFromSerial(ser)
-    latXe7              = receiveLongFromSerial(ser)
-    lonXe7              = receiveLongFromSerial(ser)
+    # Naming convention: [a]In[U]Xe[N] equals to [a]In[U] times 10^N, where [a]
+    # is the variable name and [U] is the unit name.
+    latInDegXe7         = receiveLongFromSerial(ser)
+    lonInDegXe7         = receiveLongFromSerial(ser)
     altInMmMeanSeaLevel = receiveLongFromSerial(ser)
     altInMmEllipsoid    = receiveLongFromSerial(ser)
-    horAccuracy = receiveUnsignedLongFromSerial(ser)
-    verAccuracy = receiveUnsignedLongFromSerial(ser)
+    horAccuracyInMXe4 = receiveUnsignedLongFromSerial(ser)
+    verAccuracyInMXe4 = receiveUnsignedLongFromSerial(ser)
     satsInView  = receiveByteFromSerial(ser)
     fixType     = receiveByteFromSerial(ser)
     year  = receiveUnsignedIntFromSerial(ser)
@@ -201,8 +204,8 @@ def readGpsPackageFromSerial(ser):
     assert endOfPackage == b'\r\n', "Expecting end of line!"
 
     return (upTimeInMs, timeOfWeekInMs,
-            latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
-            horAccuracy, verAccuracy, satsInView, fixType,
+            latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
+            horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType,
             year, month, day, hour, minute, second, millisecond, nanosecond)
 
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
@@ -217,9 +220,9 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
                 magX, magY, magZ, magAccuracy) = readImuPackageFromSerial(ser)
         elif (indicationByte == '@'):
             # GPS data package.
-            (upTimeInMs, timeOfWeekInMs,
-                latXe7, lonXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
-                horAccuracy, verAccuracy,
+            (upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
+                altInMmMeanSeaLevel, altInMmEllipsoid,
+                horAccuracyInMXe4, verAccuracyInMXe4,
                 satsInView, fixType,
                 year, month, day, hour, minute, second,
                 millisecond, nanosecond) = readGpsPackageFromSerial(ser)

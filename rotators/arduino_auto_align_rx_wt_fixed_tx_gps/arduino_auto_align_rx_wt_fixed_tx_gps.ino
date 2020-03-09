@@ -229,13 +229,15 @@ void loop() {
     // Fetch high-precision GPS data.
     unsigned long timeOfWeekInMs = rtkGps.getTimeOfWeek();
 
-    long latXe7 = rtkGps.getHighResLatitude();
-    long lonXe7 = rtkGps.getHighResLongitude();
+    // Naming convention: [a]In[U]Xe[N] equals to [a]In[U] times 10^N, where [a]
+    // is the variable name and [U] is the unit name.
+    long latInDegXe7 = rtkGps.getHighResLatitude();
+    long lonInDegXe7 = rtkGps.getHighResLongitude();
     long altInMmMeanSeaLevel = rtkGps.getMeanSeaLevel();
     long altInMmEllipsoid = rtkGps.getElipsoid();
 
-    unsigned long horAccuracy = rtkGps.getHorizontalAccuracy();
-    unsigned long verAccuracy = rtkGps.getVerticalAccuracy();
+    unsigned long horAccuracyInMXe4 = rtkGps.getHorizontalAccuracy();
+    unsigned long verAccuracyInMXe4 = rtkGps.getVerticalAccuracy();
 
     // Extra information.
     byte satsInView = rtkGps.getSIV();
@@ -263,10 +265,10 @@ void loop() {
       Serial.print(timeOfWeekInMs);
       Serial.println(F(" ms"));
 
-      Serial.print(F("#GPS (latXe7, lonXe7): ("));
-      Serial.print(latXe7);
+      Serial.print(F("#GPS (latInDegXe7, lonInDegXe7): ("));
+      Serial.print(latInDegXe7);
       Serial.print(F(","));
-      Serial.print(lonXe7);
+      Serial.print(lonInDegXe7);
       Serial.println(F(")"));
 
       Serial.print(F("#GPS (altInMmMeanSeaLevel, altInMmEllipsoid): ("));
@@ -275,10 +277,10 @@ void loop() {
       Serial.print(altInMmEllipsoid);
       Serial.println(F(")"));
 
-      Serial.print(F("#GPS (horAccuracy, verAccuracy): ("));
-      Serial.print(horAccuracy);
+      Serial.print(F("#GPS (horAccuracyInMXe4, verAccuracyInMXe4): ("));
+      Serial.print(horAccuracyInMXe4);
       Serial.print(F(","));
-      Serial.print(verAccuracy);
+      Serial.print(verAccuracyInMXe4);
       Serial.println(F(")"));
 
       Serial.print(F("#GPS satellites in view: "));
@@ -319,12 +321,12 @@ void loop() {
     Serial.print(F("@"));
     sendUnsignedLong(upTimeInMs);
     sendUnsignedLong(timeOfWeekInMs);
-    sendLong(latXe7);
-    sendLong(lonXe7);
+    sendLong(latInDegXe7);
+    sendLong(lonInDegXe7);
     sendLong(altInMmMeanSeaLevel);
     sendLong(altInMmEllipsoid);
-    sendUnsignedLong(horAccuracy);
-    sendUnsignedLong(verAccuracy);
+    sendUnsignedLong(horAccuracyInMXe4);
+    sendUnsignedLong(verAccuracyInMXe4);
     sendByte(satsInView);
     sendByte(fixType);
     sendUnsignedInt(year);
