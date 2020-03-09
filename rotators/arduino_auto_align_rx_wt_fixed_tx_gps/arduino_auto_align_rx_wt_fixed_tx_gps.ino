@@ -52,8 +52,9 @@
 // For converting data to bytes for serial communication.
 #define FLOAT_SIZE_IN_BYTE         4
 #define UNSIGNED_LONG_SIZE_IN_BYTE 4
-#define LONG_SIZE_IN_BYTE          4
+#define          LONG_SIZE_IN_BYTE 4
 #define UNSIGNED_INT_SIZE_IN_BYTE  2
+#define          INT_SIZE_IN_BYTE  2
 #define BYTE_SIZE_IN_BYTE          1
 
 // X axis - Tilt (changing elevation); Z axis - Pan (changing azimuth).
@@ -253,7 +254,10 @@ void loop() {
     // This value includes millisecond and can be negative.
     long nanosecond          = rtkGps.getNanosecond();
 
-    // TODO: Speed; heading.
+    long speedInMPerSX3  = rtkGps.getGroundSpeed();
+    long headingInDegXe5 = rtkGps.getHeading();
+    // Positional dilution of precision.
+    unsigned int PDODXe2 = rtkGps.getPDOP();
 
     // Debug info.
     if (DEBUG) {
@@ -315,6 +319,17 @@ void loop() {
 
       Serial.print(F("#GPS nano seconds: "));
       Serial.println(nanosecond);
+
+      Serial.print(F("#GPS speed: "));
+      Serial.print(speedInMPerSX3);
+      Serial.println(F(" (mm/s)"));
+
+      Serial.print(F("#GPS heading: "));
+      Serial.print(headingInDegXe5);
+      Serial.println(F(" (degrees * 10^-5)"));
+
+      Serial.print(F("#GPS positional dilution of precision: "));
+      Serial.println(PDODXe2/100.0, 2);
     }
 
     // Send data over serial.
@@ -337,6 +352,9 @@ void loop() {
     sendByte(second);
     sendUnsignedInt(millisecond);
     sendLong(nanosecond);
+    sendLong(speedInMPerSX3);
+    sendLong(headingInDegXe5);
+    sendUnsignedInt(PDODXe2);
 
     // End of package.
     Serial.println();
@@ -381,6 +399,13 @@ void sendUnsignedInt (unsigned int arg)
   // Get access to the unsigned long as a byte-array and write the data to the
   // serial.
   Serial.write((byte *) &arg, UNSIGNED_INT_SIZE_IN_BYTE);
+}
+
+void sendUnsignedInt (int arg)
+{
+  // Get access to the unsigned long as a byte-array and write the data to the
+  // serial.
+  Serial.write((byte *) &arg, INT_SIZE_IN_BYTE);
 }
 
 void sendByte (byte arg)

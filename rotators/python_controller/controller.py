@@ -39,13 +39,14 @@ import struct
 from scipy.spatial.transform import Rotation as R
 
 # For receiving data from serial communication.
-CHAR_SIZE_IN_BYTE  = 1          # char <=> unsigned short <=> int8_t
+CHAR_SIZE_IN_BYTE  = 1          # char <=> short <=> int8_t
 
 FLOAT_SIZE_IN_BYTE = 4          # float
 UNSIGNED_LONG_SIZE_IN_BYTE = 4  # unsigned long <=> uint32_t
-LONG_SIZE_IN_BYTE  = 4          # long <=> int32_t
-UNSIGNED_INT_SIZE_IN_BYTE  = 2  # unsigned int  <=> uint16_t
-BYTE_SIZE_IN_BYTE  = 1          # byte <=> uint8_t
+LONG_SIZE_IN_BYTE          = 4  #          long <=> int32_t
+UNSIGNED_INT_SIZE_IN_BYTE = 2   # unsigned int <=> uint16_t
+INT_SIZE_IN_BYTE          = 2   #          int <=> int16_t
+BYTE_SIZE_IN_BYTE  = 1          # byte <=> unsigned short <=> uint8_t
 
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
@@ -143,6 +144,16 @@ def receiveUnsignedIntFromSerial(ser):
         logging.warning("Unable to decode data!")
         return None
 
+def receiveIntFromSerial(ser):
+    '''
+    Receive unsigned int value from the serial byte stream.
+    '''
+    try:
+        return struct.unpack('<h', ser.read(INT_SIZE_IN_BYTE))[0]
+    except:
+        logging.warning("Unable to decode data!")
+        return None
+
 def receiveByteFromSerial(ser):
     '''
     Receive unsigned long value from the serial byte stream.
@@ -199,6 +210,9 @@ def readGpsPackageFromSerial(ser):
     second = receiveByteFromSerial(ser)
     millisecond = receiveUnsignedIntFromSerial(ser)
     nanosecond  = receiveLongFromSerial(ser)
+    speedInMPerSX3  = receiveLongFromSerial(ser)
+    headingInDegXe5 = receiveLongFromSerial(ser)
+    PDODXe2 = receiveUnsignedIntFromSerial(ser)
 
     endOfPackage = ser.readline()
     assert endOfPackage == b'\r\n', "Expecting end of line!"
@@ -206,7 +220,8 @@ def readGpsPackageFromSerial(ser):
     return (upTimeInMs, timeOfWeekInMs,
             latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
             horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType,
-            year, month, day, hour, minute, second, millisecond, nanosecond)
+            year, month, day, hour, minute, second, millisecond, nanosecond,
+            speedInMPerSX3, headingInDegXe5, PDODXe2)
 
 def sendSerialDataToDatabase(ser, cur, printSurfix=''):
     # We are expecting one IMU data update in every 0.1 s.
@@ -225,7 +240,8 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
                 horAccuracyInMXe4, verAccuracyInMXe4,
                 satsInView, fixType,
                 year, month, day, hour, minute, second,
-                millisecond, nanosecond) = readGpsPackageFromSerial(ser)
+                millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
+                PDODXe2) = readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
             logging.info(printSurfix + ser.readline().decode("utf-8").rstrip())
