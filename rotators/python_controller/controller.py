@@ -189,7 +189,6 @@ def readGpsPackageFromSerial(ser):
     '''
     Receive one GPS data package from the serial byte stream.
     '''
-
     upTimeInMs     = receiveUnsignedLongFromSerial(ser)
     timeOfWeekInMs = receiveUnsignedLongFromSerial(ser)
     # Naming convention: [a]In[U]Xe[N] equals to [a]In[U] times 10^N, where [a]
@@ -202,9 +201,9 @@ def readGpsPackageFromSerial(ser):
     verAccuracyInMXe4 = receiveUnsignedLongFromSerial(ser)
     satsInView  = receiveByteFromSerial(ser)
     fixType     = receiveByteFromSerial(ser)
-    year  = receiveUnsignedIntFromSerial(ser)
-    month = receiveByteFromSerial(ser)
-    day   = receiveByteFromSerial(ser)
+    year   = receiveUnsignedIntFromSerial(ser)
+    month  = receiveByteFromSerial(ser)
+    day    = receiveByteFromSerial(ser)
     hour   = receiveByteFromSerial(ser)
     minute = receiveByteFromSerial(ser)
     second = receiveByteFromSerial(ser)
@@ -223,18 +222,32 @@ def readGpsPackageFromSerial(ser):
             year, month, day, hour, minute, second, millisecond, nanosecond,
             speedInMPerSX3, headingInDegXe5, PDODXe2)
 
-def sendSerialDataToDatabase(ser, cur, printSurfix=''):
-    # We are expecting one IMU data update in every 0.1 s.
-    waitForDataOnSerial(ser)
+def receiveDataFromSerial(ser, cur, printSurfix=''):
+    '''
+    Receive one GPS data package from the serial byte stream.
+    '''
+    # We are expecting one IMU data update in every 0.1 s. To get a controller
+    # system time with a precision of 1 ms, we will check the serial port more
+    # often.
+    waitForDataOnSerial(ser, 0.001)
+    # Log the current system time as an integer value. We assume the controller
+    # is way faster in processing (consuming) the serial data than the Arduino
+    # board (generating the data), so that this timestamp can be used as the
+    # data package arrive timestamp (with a tolerable offset).
+    controllerUnixTimeInMs = int(time.time()*1000)
+
     # Read in the indication byte and proceed accordingling.
     while(ser.inWaiting()>0):
         indicationByte = receiveCharFromSerial(ser)
         if (indicationByte == '+'):
-            # IMU data package.
+            # IMU data package (10 values).
             (upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
                 magX, magY, magZ, magAccuracy) = readImuPackageFromSerial(ser)
+            return (controllerUnixTimeInMs,
+                upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
+                magX, magY, magZ, magAccuracy)
         elif (indicationByte == '@'):
-            # GPS data package.
+            # GPS data package (21 values).
             (upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
                 altInMmMeanSeaLevel, altInMmEllipsoid,
                 horAccuracyInMXe4, verAccuracyInMXe4,
@@ -242,12 +255,46 @@ def sendSerialDataToDatabase(ser, cur, printSurfix=''):
                 year, month, day, hour, minute, second,
                 millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
                 PDODXe2) = readGpsPackageFromSerial(ser)
+            return (controllerUnixTimeInMs,
+                upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
+                altInMmMeanSeaLevel, altInMmEllipsoid,
+                horAccuracyInMXe4, verAccuracyInMXe4,
+                satsInView, fixType,
+                year, month, day, hour, minute, second,
+                millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
+                PDODXe2)
         elif (indicationByte == '#'):
             # A message is received.
             logging.info(printSurfix + ser.readline().decode("utf-8").rstrip())
+            return None
         else:
             logging.warning("Unknown serial data stream type: "
                 + indicationByte + "!")
+            return None
+
+def createNewRecordSeries(settings, ser, cur):
+    '''
+    Add a new record in the record_series table on the server.
+    '''
+    return None
+
+def fetchNewRecordSeries(cur):
+    '''
+    Fetch the latest IMU and GPS information needed for antenna alignment.
+    '''
+    return None
+
+def fetchNewRecordSeries(cur):
+    '''
+    Fetch the current record_series row.
+    '''
+    return None
+
+def sendImuDataToDatabase():
+    return None
+
+def sendGpsDataToDatabase():
+    return None
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
     pass
@@ -334,11 +381,17 @@ def main():
             #   - Sensor data collection and
             #   - automatic antenna alignment.
             try:
+                if controllerSide == 'rx':
+                    createNewRecordSeries(settings, serPortToArduino, databaseCur)
+                elif controllerSide == 'tx':
+                    fetchNewRecordSeries(databaseCur)
+
                 while(True):
                     # Fetching and processing all incoming messages from the
                     # Arduino.
-                    sendSerialDataToDatabase(serPortToArduino, databaseCur,
+                    sensorData = receiveDataFromSerial(serPortToArduino, databaseCur,
                         '    Arduino (Sensor Data): ')
+
                     # Compute and adjust the PMW signals if necessary.
                     adjustServosWhenNecessary(serPortToArduino, databaseCur,
                         '    Arduino (Motor Adjustment): ')

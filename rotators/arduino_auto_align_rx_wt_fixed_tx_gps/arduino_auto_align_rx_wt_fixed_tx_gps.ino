@@ -42,7 +42,7 @@
 #include "SparkFun_Ublox_Arduino_Library.h"
 
 // For enabling debugging over the serial port.
-#define DEBUG true
+#define DEBUG false
 
 // The PWM range for the continuous servos.
 #define MAX_PWM 2000
