@@ -14,6 +14,7 @@ CREATE TABLE `record_series` (
 CREATE TABLE `rx_imu` (
   `id` INT_UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   `record_series_id` INT_UNSIGNED,
+  `controller_unix_time_in_ms` INT_UNSIGNED,
   `up_time_in_ms` INT_UNSIGNED,
   `quat_real` FLOAT,
   `quat_i` FLOAT,
@@ -29,6 +30,7 @@ CREATE TABLE `rx_imu` (
 CREATE TABLE `rx_gps` (
   `id` INT_UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   `record_series_id` INT_UNSIGNED,
+  `controller_unix_time_in_ms` INT_UNSIGNED,
   `up_time_in_ms` INT_UNSIGNED,
   `time_of_week_in_ms` INT_UNSIGNED,
   `lat_in_deg_x_e7` INT,
@@ -55,6 +57,7 @@ CREATE TABLE `rx_gps` (
 CREATE TABLE `tx_imu` (
   `id` INT_UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   `record_series_id` INT_UNSIGNED,
+  `controller_unix_time_in_ms` INT_UNSIGNED,
   `up_time_in_ms` INT_UNSIGNED,
   `quat_real` FLOAT,
   `quat_i` FLOAT,

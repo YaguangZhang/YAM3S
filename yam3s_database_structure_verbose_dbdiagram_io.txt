@@ -23,6 +23,8 @@ Table rx_imu {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   record_series_id INT_UNSIGNED [ref: > record_series.id] // NN,UN
   
+  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
+  
   // 10 values.
   up_time_in_ms INT_UNSIGNED // uint32_t; default to NULL.
   quat_real FLOAT // 4 bytes; default to NULL.
@@ -41,6 +43,8 @@ Table rx_gps {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   record_series_id INT_UNSIGNED [ref: > record_series.id] // NN,UN
 
+  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
+  
   // 21 values.
   up_time_in_ms INT_UNSIGNED // uint32_t; default to NULL.
   time_of_week_in_ms INT_UNSIGNED // uint32_t; default to NULL.
@@ -68,6 +72,8 @@ Table rx_gps {
 Table tx_imu {
   id INT_UNSIGNED [pk, increment]
   record_series_id INT_UNSIGNED [ref: > record_series.id]
+  
+  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
   
   // 10 values.
   up_time_in_ms INT_UNSIGNED // uint32_t
