@@ -4,16 +4,16 @@
 Table record_series {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   label VARCHAR(100) // Default to 'Unkown'.
-  
+
   starting_up_time_in_ms_rx INT_UNSIGNED // uint32_t; UN,default to NULL.
-  starting_controller_unix_time_in_ms_rx INT_UNSIGNED // Python uint32; UN,default to NULL.
-  
+  starting_controller_unix_time_in_ms_rx BIGINT_UNSIGNED // Python uint32; UN,default to NULL.
+
   starting_up_time_in_ms_tx INT_UNSIGNED // uint32_t
-  starting_controller_unix_time_in_ms_tx INT_UNSIGNED // Python uint32
-  
+  starting_controller_unix_time_in_ms_tx BIGINT_UNSIGNED // Python uint32
+
   lat_in_deg_xe7_tx INT // int32_t; default to NULL.
   lon_in_deg_xe7_tx INT // int32_t; default to NULL.
-  
+
   starting_lat_in_deg_xe7_rx INT // int32_t; default to NULL.
   starting_lon_in_deg_xe7_rx INT // int32_t; default to NULL.
 }
@@ -22,9 +22,9 @@ Table record_series {
 Table rx_imu {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   record_series_id INT_UNSIGNED [ref: > record_series.id] // NN,UN
-  
-  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
-  
+
+  controller_unix_time_in_ms BIGINT_UNSIGNED // Python uint32; UN,default to NULL.
+
   // 10 values.
   up_time_in_ms INT_UNSIGNED // uint32_t; default to NULL.
   quat_real FLOAT // 4 bytes; default to NULL.
@@ -43,8 +43,8 @@ Table rx_gps {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   record_series_id INT_UNSIGNED [ref: > record_series.id] // NN,UN
 
-  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
-  
+  controller_unix_time_in_ms BIGINT_UNSIGNED // Python uint32; UN,default to NULL.
+
   // 21 values.
   up_time_in_ms INT_UNSIGNED // uint32_t; default to NULL.
   time_of_week_in_ms INT_UNSIGNED // uint32_t; default to NULL.
@@ -72,9 +72,9 @@ Table rx_gps {
 Table tx_imu {
   id INT_UNSIGNED [pk, increment]
   record_series_id INT_UNSIGNED [ref: > record_series.id]
-  
-  controller_unix_time_in_ms INT_UNSIGNED // Python uint32; UN,default to NULL.
-  
+
+  controller_unix_time_in_ms BIGINT_UNSIGNED // Python uint32; UN,default to NULL.
+
   // 10 values.
   up_time_in_ms INT_UNSIGNED // uint32_t
   quat_real FLOAT // 4 bytes

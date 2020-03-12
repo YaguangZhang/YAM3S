@@ -2,9 +2,9 @@ CREATE TABLE `record_series` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `label` varchar(100) DEFAULT 'Unkown',
   `starting_up_time_in_ms_rx` int unsigned DEFAULT NULL,
-  `starting_controller_unix_time_in_ms_rx` int unsigned DEFAULT NULL,
+  `starting_controller_unix_time_in_ms_rx` bigint unsigned DEFAULT NULL,
   `starting_up_time_in_ms_tx` int unsigned DEFAULT NULL,
-  `starting_controller_unix_time_in_ms_tx` int unsigned DEFAULT NULL,
+  `starting_controller_unix_time_in_ms_tx` bigint unsigned DEFAULT NULL,
   `lat_in_deg_xe7_tx` int DEFAULT NULL,
   `lon_in_deg_xe7_tx` int DEFAULT NULL,
   `starting_lat_in_deg_xe7_rx` int DEFAULT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE `record_series` (
 CREATE TABLE `rx_imu` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `record_series_id` int unsigned NOT NULL,
-  `controller_unix_time_in_ms` int unsigned DEFAULT NULL,
+  `controller_unix_time_in_ms` bigint unsigned DEFAULT NULL,
   `up_time_in_ms` int unsigned DEFAULT NULL,
   `quat_real` float DEFAULT NULL,
   `quat_i` float DEFAULT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE `rx_imu` (
 CREATE TABLE `rx_gps` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `record_series_id` int unsigned NOT NULL,
-  `controller_unix_time_in_ms` int unsigned DEFAULT NULL,
+  `controller_unix_time_in_ms` bigint unsigned DEFAULT NULL,
   `up_time_in_ms` int unsigned DEFAULT NULL,
   `time_of_week_in_ms` int unsigned DEFAULT NULL,
   `lat_in_deg_x_e7` int DEFAULT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE `rx_gps` (
 CREATE TABLE `tx_imu` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `record_series_id` int unsigned NOT NULL,
-  `controller_unix_time_in_ms` int unsigned DEFAULT NULL,
+  `controller_unix_time_in_ms` bigint unsigned DEFAULT NULL,
   `up_time_in_ms` int unsigned DEFAULT NULL,
   `quat_real` float DEFAULT NULL,
   `quat_i` float DEFAULT NULL,

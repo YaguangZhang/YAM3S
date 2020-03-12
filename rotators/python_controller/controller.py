@@ -15,7 +15,7 @@
 
 # For locating path, timing and logging.
 import os
-import time
+import time, datetime
 import logging, sys
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
@@ -222,7 +222,7 @@ def readGpsPackageFromSerial(ser):
             year, month, day, hour, minute, second, millisecond, nanosecond,
             speedInMPerSX3, headingInDegXe5, PDODXe2)
 
-def receiveDataFromSerial(ser, cur, printSurfix=''):
+def receiveDataFromSerial(ser, printSurfix=''):
     '''
     Receive one GPS data package from the serial byte stream.
     '''
@@ -272,10 +272,58 @@ def receiveDataFromSerial(ser, cur, printSurfix=''):
                 + indicationByte + "!")
             return None
 
-def createNewRecordSeries(settings, ser, cur):
+def createNewRecordSeries(settings, ser, db, cur):
     '''
     Add a new record in the record_series table on the server.
     '''
+    # SQL command to use.
+    sqlCommand = '''INSERT INTO record_series (label,
+             starting_up_time_in_ms_rx, starting_controller_unix_time_in_ms_rx,
+             starting_lat_in_deg_xe7_rx, starting_lon_in_deg_xe7_rx)
+             VALUES (%s, %s, %s, %s, %s)'''
+
+    # Wait until a valid GPS package is received.
+    flagValidGpsPackageReceived = False
+    while(not flagValidGpsPackageReceived):
+        try:
+            newSerialData = receiveDataFromSerial(ser,
+                '    Waiting for valid GPS data... Received: ')
+            # GPS package generates 22 values.
+            if (newSerialData is not None) and len(newSerialData)==22:
+                (controllerUnixTimeInMs,
+                    upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
+                    altInMmMeanSeaLevel, altInMmEllipsoid,
+                    horAccuracyInMXe4, verAccuracyInMXe4,
+                    satsInView, fixType,
+                    year, month, day, hour, minute, second,
+                    millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
+                    PDODXe2) = newSerialData
+                # The GPS package has valid data if the location parameters are
+                # nonzero.
+                if all((latInDegXe7, lonInDegXe7, fixType)):
+                    flagValidGpsPackageReceived = True
+        except Exception as err:
+            logging.warning(
+                "Unknown error happened while waiting for valid GPS data!")
+            logging.warning("    More info: {}".format(str(err)))
+
+    # Assemble the new entry.
+    labelPrefix = settings['measurement_attempt_label_prefix']
+    label = labelPrefix + datetime.datetime.fromtimestamp(
+        controllerUnixTimeInMs/1000.0)\
+        .astimezone().strftime(" %Y-%m-%d %H:%M:%S %Z")
+    newData = (label, upTimeInMs, controllerUnixTimeInMs,
+               latInDegXe7, lonInDegXe7)
+
+    # Upload the new entry.
+    cur.execute(sqlCommand, newData)
+    db.commit()
+
+    # Upload the GPS data, too.
+    sendGpsDataToDatabase(newSerialData, 'rx')
+
+    logging.info("Record series #" + str(cur.lastrowid) + " inserted.")
+    logging.info("    New data: " + str(newData))
     return None
 
 def fetchNewRecordSeries(cur):
@@ -284,7 +332,7 @@ def fetchNewRecordSeries(cur):
     '''
     return None
 
-def fetchNewRecordSeries(cur):
+def fetchCurrentRecordSeries(cur):
     '''
     Fetch the current record_series row.
     '''
@@ -293,7 +341,7 @@ def fetchNewRecordSeries(cur):
 def sendImuDataToDatabase():
     return None
 
-def sendGpsDataToDatabase():
+def sendGpsDataToDatabase(gpsSerialData, controllerSide):
     return None
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
@@ -331,6 +379,7 @@ def main():
         print("Signalling Arduino to start the auto antenna alignment procedure ...")
         serPortToArduino.write(b"r")
         # Read the acknowledgement.
+        waitForDataOnSerial(serPortToArduino)
         ackFromArduino = serPortToArduino.readline()
 
         # Determine which side (TX/RX) the controller is at.
@@ -382,14 +431,19 @@ def main():
             #   - automatic antenna alignment.
             try:
                 if controllerSide == 'rx':
-                    createNewRecordSeries(settings, serPortToArduino, databaseCur)
+                    # Only the RX can create new record in the table record_series.
+                    createNewRecordSeries(settings, serPortToArduino,
+                        databaseConnection, databaseCur)
                 elif controllerSide == 'tx':
-                    fetchNewRecordSeries(databaseCur)
+                    # The RX will wait for new RX data entries and fetch and
+                    # update the latest record_series record accordingly.
+                    fetchCurrentRecordSeries(databaseCur)
+                    updateCurrentRecordSeriesWithTxTimestamps(databaseCur)
 
                 while(True):
-                    # Fetching and processing all incoming messages from the
+                    # Fetch and process all incoming messages from the
                     # Arduino.
-                    sensorData = receiveDataFromSerial(serPortToArduino, databaseCur,
+                    sensorData = receiveDataFromSerial(serPortToArduino,
                         '    Arduino (Sensor Data): ')
 
                     # Compute and adjust the PMW signals if necessary.

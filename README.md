@@ -13,7 +13,7 @@ recording, the steps one needs to carry out are listed below.
 3. Measure or find on a map the TX and RX GPS locations and update the
    `settings.json` file accordingly.
 4. If desired, assign a string label to the measurement recording attempt to
-   `measurement_attempt_label` in `settings.json`.
+   `measurement_attempt_label_prefix` in `settings.json`, which will be combined with the date and time when the measurement starts for labeling that recording activity.
 5. On the RX side, initiated the CKT-GPS (Ref: <https://learn.sparkfun.com/tutorials/gps-rtk2-hookup-guide>)
    1. connect to the CKT-GPS board via USB
    2. open u-center and connect to the correct COM port
