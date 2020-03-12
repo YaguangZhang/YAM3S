@@ -7,11 +7,13 @@ CREATE TABLE `record_series` (
   `starting_controller_unix_time_in_ms_tx` bigint unsigned DEFAULT NULL,
   `lat_in_deg_xe7_tx` int DEFAULT NULL,
   `lon_in_deg_xe7_tx` int DEFAULT NULL,
+  `alt_in_mm_mean_sea_level_tx` int DEFAULT NULL,
   `starting_lat_in_deg_xe7_rx` int DEFAULT NULL,
   `starting_lon_in_deg_xe7_rx` int DEFAULT NULL,
+  `starting_alt_in_mm_mean_sea_level_rx` int DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `id_UNIQUE` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Recording activities.'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Recording activities.';
 
 CREATE TABLE `rx_imu` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -31,7 +33,7 @@ CREATE TABLE `rx_imu` (
   UNIQUE KEY `id_UNIQUE` (`id`),
   KEY `record_series_id` (`record_series_id`),
   CONSTRAINT `rx_imu_ibfk_1` FOREIGN KEY (`record_series_id`) REFERENCES `record_series` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='IMU data from the RX.'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='IMU data from the RX.';
 
 CREATE TABLE `rx_gps` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -62,7 +64,7 @@ CREATE TABLE `rx_gps` (
   UNIQUE KEY `id_UNIQUE` (`id`),
   KEY `record_series_id` (`record_series_id`),
   CONSTRAINT `rx_gps_ibfk_1` FOREIGN KEY (`record_series_id`) REFERENCES `record_series` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='GPS data from the RX.'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='GPS data from the RX.';
 
 CREATE TABLE `tx_imu` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -82,4 +84,4 @@ CREATE TABLE `tx_imu` (
   UNIQUE KEY `id_UNIQUE` (`id`),
   KEY `record_series_id` (`record_series_id`),
   CONSTRAINT `tx_imu_ibfk_1` FOREIGN KEY (`record_series_id`) REFERENCES `record_series` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='IMU data from the TX.'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='IMU data from the TX.';

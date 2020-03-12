@@ -36,7 +36,7 @@ import mysql.connector
 import struct
 
 # For comprehending quaternions.
-from scipy.spatial.transform import Rotation as R
+# from scipy.spatial.transform import Rotation as R
 
 # For receiving data from serial communication.
 CHAR_SIZE_IN_BYTE  = 1          # char <=> short <=> int8_t
@@ -279,8 +279,10 @@ def createNewRecordSeries(settings, ser, db, cur):
     # SQL command to use.
     sqlCommand = '''INSERT INTO record_series (label,
              starting_up_time_in_ms_rx, starting_controller_unix_time_in_ms_rx,
-             starting_lat_in_deg_xe7_rx, starting_lon_in_deg_xe7_rx)
-             VALUES (%s, %s, %s, %s, %s)'''
+             lat_in_deg_xe7_tx, lon_in_deg_xe7_tx, alt_in_mm_mean_sea_level_tx,
+             starting_lat_in_deg_xe7_rx, starting_lon_in_deg_xe7_rx,
+             starting_alt_in_mm_mean_sea_level_rx)
+             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)'''
 
     # Wait until a valid GPS package is received.
     flagValidGpsPackageReceived = False
@@ -312,8 +314,12 @@ def createNewRecordSeries(settings, ser, db, cur):
     label = labelPrefix + datetime.datetime.fromtimestamp(
         controllerUnixTimeInMs/1000.0)\
         .astimezone().strftime(" %Y-%m-%d %H:%M:%S %Z")
+    latInDegXe7Tx = int(settings['controllers']['tx']['gps_position']['latitude']*1e7)
+    lonInDegXe7Tx = int(settings['controllers']['tx']['gps_position']['longitude']*1e7)
+    altInMmMeanSeaLevelTx = int(settings['controllers']['tx']['gps_position']['altitude']*1e3)
     newData = (label, upTimeInMs, controllerUnixTimeInMs,
-               latInDegXe7, lonInDegXe7)
+               latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx,
+               latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
 
     # Upload the new entry.
     cur.execute(sqlCommand, newData)
@@ -324,6 +330,8 @@ def createNewRecordSeries(settings, ser, db, cur):
 
     logging.info("Record series #" + str(cur.lastrowid) + " inserted.")
     logging.info("    New data: " + str(newData))
+
+def updateCurrentRecordSeriesWithTxTimestamps():
     return None
 
 def fetchNewRecordSeries(cur):

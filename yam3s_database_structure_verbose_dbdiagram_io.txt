@@ -5,17 +5,21 @@ Table record_series {
   id INT_UNSIGNED [pk, increment] // PK,NN,UQ,UN,AI
   label VARCHAR(100) // Default to 'Unkown'.
 
+  // RX starts before the TX and it will create new record_series entries.
   starting_up_time_in_ms_rx INT_UNSIGNED // uint32_t; UN,default to NULL.
   starting_controller_unix_time_in_ms_rx BIGINT_UNSIGNED // Python uint32; UN,default to NULL.
 
+  // TX will wait for the new record_series entry and update it with its timestamps.
   starting_up_time_in_ms_tx INT_UNSIGNED // uint32_t
   starting_controller_unix_time_in_ms_tx BIGINT_UNSIGNED // Python uint32
 
   lat_in_deg_xe7_tx INT // int32_t; default to NULL.
   lon_in_deg_xe7_tx INT // int32_t; default to NULL.
+  alt_in_mm_mean_sea_level_tx INT // int32_t; default to NULL.
 
   starting_lat_in_deg_xe7_rx INT // int32_t; default to NULL.
   starting_lon_in_deg_xe7_rx INT // int32_t; default to NULL.
+  starting_alt_in_mm_mean_sea_level_rx INT // int32_t; default to NULL.
 }
 
 // IMU data from the RX.
