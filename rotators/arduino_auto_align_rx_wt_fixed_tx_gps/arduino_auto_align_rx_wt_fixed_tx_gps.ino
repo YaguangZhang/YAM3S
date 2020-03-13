@@ -61,6 +61,8 @@
 int wpmPinX = 9, wpmPinZ = 10;
 Servo servoX, servoZ;
 
+// Time to wait for sensors in millisecond.
+int timeToWaitForSensorsInMs = 100;
 // IMU data update period in millisecond.
 int imuPeriodInMs = 100;
 // GPS data update period in millisecond.
@@ -89,23 +91,26 @@ void setup() {
   Wire.begin();
   Wire.setClock(i2cClockInHz);
 
-  // IMU. TODO: wait until the sensors are availabe.
-  if (vrImu.begin() == false) {
+  // IMU. Wait until the sensors are available.
+  while (vrImu.begin() == false) {
     Serial.println(F(
       "#Error: VR IMU (BNO080) not detected at default I2C address!"));
-    Serial.println(F("#Freezing ..."));
-    while (true);
+    Serial.print(F("#    We will try again after "));
+    Serial.print(timeToWaitForSensorsInMs);
+    Serial.println(F(" ms..."));
+    delay(timeToWaitForSensorsInMs);
   }
   vrImu.enableRotationVector(imuPeriodInMs);
   vrImu.enableMagnetometer(imuPeriodInMs);
 
   // RTK GPS.
-  if (rtkGps.begin() == false)
-  {
+  while (rtkGps.begin() == false) {
     Serial.println(F(
       "#Error: RTK GPS (u-blox) not detected at default I2C address!"));
-    Serial.println(F("#Freezing ..."));
-    while (true);
+    Serial.print(F("#    We will try again after "));
+    Serial.print(timeToWaitForSensorsInMs);
+    Serial.println(F(" ms..."));
+    delay(timeToWaitForSensorsInMs);
   }
   // Set the I2C port to output UBX only (turn off NMEA noise).
   rtkGps.setI2COutput(COM_TYPE_UBX);
