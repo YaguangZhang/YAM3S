@@ -240,29 +240,16 @@ def receiveDataFromSerial(ser, printSurfix=''):
     while(ser.inWaiting()>0):
         indicationByte = receiveCharFromSerial(ser)
         if (indicationByte == '+'):
-            # IMU data package (10 values).
-            (upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
-                magX, magY, magZ, magAccuracy) = readImuPackageFromSerial(ser)
-            return (controllerUnixTimeInMs,
-                upTimeInMs, quatReal, quatI, quatJ, quatK, quatRadianAccuracy,
-                magX, magY, magZ, magAccuracy)
+            # IMU data package (10 values): (upTimeInMs, quatReal, quatI, quatJ,
+            # quatK, quatRadianAccuracy, magX, magY, magZ, magAccuracy)
+            return (controllerUnixTimeInMs,)+readImuPackageFromSerial(ser)
         elif (indicationByte == '@'):
-            # GPS data package (21 values).
-            (upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
-                altInMmMeanSeaLevel, altInMmEllipsoid,
-                horAccuracyInMXe4, verAccuracyInMXe4,
-                satsInView, fixType,
-                year, month, day, hour, minute, second,
-                millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
-                PDODXe2) = readGpsPackageFromSerial(ser)
-            return (controllerUnixTimeInMs,
-                upTimeInMs, timeOfWeekInMs, latInDegXe7, lonInDegXe7,
-                altInMmMeanSeaLevel, altInMmEllipsoid,
-                horAccuracyInMXe4, verAccuracyInMXe4,
-                satsInView, fixType,
-                year, month, day, hour, minute, second,
-                millisecond, nanosecond, speedInMPerSX3, headingInDegXe5,
-                PDODXe2)
+            # GPS data package (21 values): (upTimeInMs, timeOfWeekInMs,
+            # latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
+            # horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType, year,
+            # month, day, hour, minute, second, millisecond, nanosecond,
+            # speedInMPerSX3, headingInDegXe5, PDODXe2).
+            return (controllerUnixTimeInMs,)+readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
             logging.info(printSurfix + ser.readline().decode("utf-8").rstrip())
@@ -366,7 +353,7 @@ def fetchCurrentRecordSeries(cur):
 def sendImuDataToDatabase(recordSeriesId, imuSerialData,
     controllerSide, db, cur):
     '''
-    Upload the IMU data to database.
+    Upload IMU data to database.
     '''
     # SQL command to use.
     sqlCommand = "INSERT INTO " + controllerSide.lower() +'''_imu
@@ -390,7 +377,34 @@ def sendImuDataToDatabase(recordSeriesId, imuSerialData,
 
 def sendGpsDataToDatabase(recordSeriesId, gpsSerialData,
     controllerSide, db, cur):
-    return None
+    '''
+    Upload GPS data to database.
+    '''
+    # SQL command to use.
+    sqlCommand = "INSERT INTO " + controllerSide.lower() +'''_gps
+             (record_series_id,
+             controller_unix_time_in_ms, up_time_in_ms, time_of_week_in_ms,
+             lat_in_deg_x_e7, lon_in_deg_x_e7,
+             alt_in_mm_mean_sea_level, alt_in_mm_ellipsoid,
+             hor_accuracy_in_m_xe4, ver_accuracy_in_m_xe4,
+             sats_in_view, fix_type,
+             year, month, day, hour, minute, second, millisecond, nanosecond,
+             speed_in_m_per_sx3, heading_in_deg_xe5, pdod_xe2)
+             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+             %s, %s, %s)'''
+
+    # Upload the new entry.
+    cur.execute(sqlCommand, (recordSeriesId,)+gpsSerialData )
+    db.commit()
+    gpsId = cur.lastrowid
+
+    logging.info("(Record series #" + str(recordSeriesId) + ") "
+        + controllerSide.upper() + " GPS #"
+        + str(gpsId) + " inserted.")
+    logging.info("    New data: " + str(gpsSerialData))
+
+    return gpsId
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
     pass
