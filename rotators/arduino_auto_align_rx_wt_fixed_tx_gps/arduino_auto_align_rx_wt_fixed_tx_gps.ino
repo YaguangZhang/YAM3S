@@ -89,7 +89,7 @@ void setup() {
   Wire.begin();
   Wire.setClock(i2cClockInHz);
 
-  // IMU.
+  // IMU. TODO: wait until the sensors are availabe.
   if (vrImu.begin() == false) {
     Serial.println(F(
       "#Error: VR IMU (BNO080) not detected at default I2C address!"));

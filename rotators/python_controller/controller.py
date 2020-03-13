@@ -36,7 +36,7 @@ import mysql.connector
 import struct
 
 # For comprehending quaternions.
-# from scipy.spatial.transform import Rotation as R
+#   - from scipy.spatial.transform import Rotation as R
 
 # For receiving data from serial communication.
 CHAR_SIZE_IN_BYTE  = 1          # char <=> short <=> int8_t
@@ -275,6 +275,17 @@ def receiveDataFromSerial(ser, printSurfix=''):
 def createNewRecordSeries(settings, ser, db, cur):
     '''
     Add a new record in the record_series table on the server.
+
+    - Output:
+        * recordSeriesId
+          - The id for the new entry in the database.
+        * newSerialData
+          - The GPS data used for initializing the record_series entry, which
+            contains (controllerUnixTimeInMs, upTimeInMs, timeOfWeekInMs,
+            latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
+            horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType, year,
+            month, day, hour, minute, second, millisecond, nanosecond,
+            speedInMPerSX3, headingInDegXe5, PDODXe2).
     '''
     # SQL command to use.
     sqlCommand = '''INSERT INTO record_series (label,
@@ -314,9 +325,12 @@ def createNewRecordSeries(settings, ser, db, cur):
     label = labelPrefix + datetime.datetime.fromtimestamp(
         controllerUnixTimeInMs/1000.0)\
         .astimezone().strftime(" %Y-%m-%d %H:%M:%S %Z")
-    latInDegXe7Tx = int(settings['controllers']['tx']['gps_position']['latitude']*1e7)
-    lonInDegXe7Tx = int(settings['controllers']['tx']['gps_position']['longitude']*1e7)
-    altInMmMeanSeaLevelTx = int(settings['controllers']['tx']['gps_position']['altitude']*1e3)
+    latInDegXe7Tx = int(
+        settings['controllers']['tx']['gps_position']['latitude']*1e7)
+    lonInDegXe7Tx = int(
+        settings['controllers']['tx']['gps_position']['longitude']*1e7)
+    altInMmMeanSeaLevelTx = int(
+        settings['controllers']['tx']['gps_position']['altitude']*1e3)
     newData = (label, upTimeInMs, controllerUnixTimeInMs,
                latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx,
                latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
@@ -324,12 +338,15 @@ def createNewRecordSeries(settings, ser, db, cur):
     # Upload the new entry.
     cur.execute(sqlCommand, newData)
     db.commit()
+    recordSeriesId = cur.lastrowid
 
     # Upload the GPS data, too.
-    sendGpsDataToDatabase(newSerialData, 'rx')
+    newGpsId = sendGpsDataToDatabase(recordSeriesId, newSerialData, 'rx', db, cur)
 
-    logging.info("Record series #" + str(cur.lastrowid) + " inserted.")
+    logging.info("Record series #" + str(recordSeriesId) + " inserted.")
     logging.info("    New data: " + str(newData))
+
+    return (recordSeriesId, newGpsId, newSerialData)
 
 def updateCurrentRecordSeriesWithTxTimestamps():
     return None
@@ -344,12 +361,35 @@ def fetchCurrentRecordSeries(cur):
     '''
     Fetch the current record_series row.
     '''
-    return None
+    return None # TODO: Output currentRecordSeriesId.
 
-def sendImuDataToDatabase():
-    return None
+def sendImuDataToDatabase(recordSeriesId, imuSerialData,
+    controllerSide, db, cur):
+    '''
+    Upload the IMU data to database.
+    '''
+    # SQL command to use.
+    sqlCommand = "INSERT INTO " + controllerSide.lower() +'''_imu
+             (record_series_id,
+             controller_unix_time_in_ms, up_time_in_ms,
+             quat_real, quat_i, quat_j, quat_k, quat_radian_accuracy,
+             mag_x, mag_y, mag_z, mag_accuracy)
+             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
 
-def sendGpsDataToDatabase(gpsSerialData, controllerSide):
+    # Upload the new entry.
+    cur.execute(sqlCommand, (recordSeriesId,)+imuSerialData )
+    db.commit()
+    imuId = cur.lastrowid
+
+    logging.info("(Record series #" + str(recordSeriesId) + ") "
+        + controllerSide.upper() + " IMU #"
+        + str(imuId) + " inserted.")
+    logging.info("    New data: " + str(imuSerialData))
+
+    return imuId
+
+def sendGpsDataToDatabase(recordSeriesId, gpsSerialData,
+    controllerSide, db, cur):
     return None
 
 def adjustServosWhenNecessary(ser, cur, printSurfix=''):
@@ -384,7 +424,8 @@ def main():
         printAllSerData(serPortToArduino,
             '    Arduino (Raw Message during Initialization): ')
 
-        print("Signalling Arduino to start the auto antenna alignment procedure ...")
+        print("Signalling Arduino to start "
+            + "the auto antenna alignment procedure ...")
         serPortToArduino.write(b"r")
         # Read the acknowledgement.
         waitForDataOnSerial(serPortToArduino)
@@ -410,14 +451,17 @@ def main():
         # machine is registered at the server.
         print("\nForwarding port for accessing remote database ...")
         ssh_public_key = paramiko.RSAKey.from_private_key_file(
-            bytes(settings['controllers'][controllerSide]['ssh']['private_key_dir'],
+            bytes(settings['controllers'][controllerSide]
+                ['ssh']['private_key_dir'],
                 encoding='utf-8'),
-            password=settings['controllers'][controllerSide]['ssh']['private_key_password'])
+            password=settings['controllers'][controllerSide]
+            ['ssh']['private_key_password'])
 
         with SSHTunnelForwarder(
             (settings['server']['url'],
-            settings['controllers'][controllerSide]['ssh']['port']),
-            ssh_username=settings['controllers'][controllerSide]['ssh']['user_account'],
+                settings['controllers'][controllerSide]['ssh']['port']),
+            ssh_username=settings['controllers'][controllerSide]
+            ['ssh']['user_account'],
             ssh_pkey=ssh_public_key,
             remote_bind_address=(settings['server']['mysql_instance']['host'],
                 settings['server']['mysql_instance']['port'])
@@ -427,8 +471,10 @@ def main():
                 host='localhost',
                 port=tunnelledMySql.local_bind_port,
                 database=settings['server']['mysql_instance']['database'],
-                user=settings['controllers'][controllerSide]['database_credential']['username'],
-                password=settings['controllers'][controllerSide]['database_credential']['password'],
+                user=settings['controllers'][controllerSide]
+                ['database_credential']['username'],
+                password=settings['controllers'][controllerSide]
+                ['database_credential']['password'],
                 auth_plugin=settings['server']['mysql_instance']['auth_plugin'])
 
             databaseCur = databaseConnection.cursor()
@@ -438,21 +484,40 @@ def main():
             #   - Sensor data collection and
             #   - automatic antenna alignment.
             try:
+                # Initialize the cache variables for checking when new data is
+                # available for realign the antenna.
+                currentGpsId = None
+                currentImuId = None
+                currentGpsIdCounterPart = None
+
                 if controllerSide == 'rx':
-                    # Only the RX can create new record in the table record_series.
-                    createNewRecordSeries(settings, serPortToArduino,
+                    # Only the RX can create new record in the table
+                    # record_series.
+                    (currentRecordSeriesId, currentGpsId,
+                        currentGpsSerialData) = createNewRecordSeries(
+                        settings, serPortToArduino,
                         databaseConnection, databaseCur)
                 elif controllerSide == 'tx':
                     # The RX will wait for new RX data entries and fetch and
                     # update the latest record_series record accordingly.
-                    fetchCurrentRecordSeries(databaseCur)
+                    currentRecordSeriesId = fetchCurrentRecordSeries(databaseCur)
                     updateCurrentRecordSeriesWithTxTimestamps(databaseCur)
 
                 while(True):
-                    # Fetch and process all incoming messages from the
-                    # Arduino.
+                    # Fetch and process all incoming messages from the Arduino.
                     sensorData = receiveDataFromSerial(serPortToArduino,
                         '    Arduino (Sensor Data): ')
+
+                    # GPS package generates 22 values.
+                    if (sensorData is not None) and len(sensorData)==22:
+                        newGpsId = sendGpsDataToDatabase(
+                            currentRecordSeriesId, sensorData,
+                            controllerSide, databaseConnection, databaseCur)
+                    # IMU package generates 11 values.
+                    elif (sensorData is not None) and len(sensorData)==11:
+                        newImuId = sendImuDataToDatabase(
+                            currentRecordSeriesId, sensorData,
+                            controllerSide, databaseConnection, databaseCur)
 
                     # Compute and adjust the PMW signals if necessary.
                     adjustServosWhenNecessary(serPortToArduino, databaseCur,
