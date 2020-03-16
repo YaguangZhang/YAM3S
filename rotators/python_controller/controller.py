@@ -38,6 +38,9 @@ import struct
 # For comprehending quaternions.
 #   - from scipy.spatial.transform import Rotation as R
 
+# For more math functions.
+import numpy as np
+
 # For receiving data from serial communication.
 CHAR_SIZE_IN_BYTE  = 1          # char <=> short <=> int8_t
 
@@ -47,6 +50,11 @@ LONG_SIZE_IN_BYTE          = 4  #          long <=> int32_t
 UNSIGNED_INT_SIZE_IN_BYTE = 2   # unsigned int <=> uint16_t
 INT_SIZE_IN_BYTE          = 2   #          int <=> int16_t
 BYTE_SIZE_IN_BYTE  = 1          # byte <=> unsigned short <=> uint8_t
+
+# The PWM range for the continuous servos.
+MIN_PWM = 1000
+MID_PWM = 1500
+MAX_PWM = 2000
 
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
@@ -259,13 +267,29 @@ def receiveDataFromSerial(ser, printSurfix=''):
                 + indicationByte + "!")
             return None
 
+def fetchTxLoc(settings):
+    '''
+    Fetch the 3D location (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel) of the
+    TX from the settings JSON file.
+    '''
+    latInDegXe7Tx = int(
+        settings['controllers']['tx']['gps_position']['latitude']*1e7)
+    lonInDegXe7Tx = int(
+        settings['controllers']['tx']['gps_position']['longitude']*1e7)
+    altInMmMeanSeaLevelTx = int(
+        settings['controllers']['tx']['gps_position']['altitude']*1e3)
+
+    return(latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx)
+
 def createNewRecordSeries(settings, ser, db, cur):
     '''
     Add a new record in the record_series table on the server.
 
     - Output:
         * recordSeriesId
-          - The id for the new entry in the database.
+          - The id for the new record series entry in the database.
+        * newGpsId
+          - The id for the new RX GPS data entry in the database.
         * newSerialData
           - The GPS data used for initializing the record_series entry, which
             contains (controllerUnixTimeInMs, upTimeInMs, timeOfWeekInMs,
@@ -273,6 +297,9 @@ def createNewRecordSeries(settings, ser, db, cur):
             horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType, year,
             month, day, hour, minute, second, millisecond, nanosecond,
             speedInMPerSX3, headingInDegXe5, PDODXe2).
+        * (latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx)
+          - The latitude, longitude, and altitude relative to the mean see level
+            for the TX.
     '''
     # SQL command to use.
     sqlCommand = '''INSERT INTO record_series (label,
@@ -312,12 +339,7 @@ def createNewRecordSeries(settings, ser, db, cur):
     label = labelPrefix + datetime.datetime.fromtimestamp(
         controllerUnixTimeInMs/1000.0)\
         .astimezone().strftime(" %Y-%m-%d %H:%M:%S %Z")
-    latInDegXe7Tx = int(
-        settings['controllers']['tx']['gps_position']['latitude']*1e7)
-    lonInDegXe7Tx = int(
-        settings['controllers']['tx']['gps_position']['longitude']*1e7)
-    altInMmMeanSeaLevelTx = int(
-        settings['controllers']['tx']['gps_position']['altitude']*1e3)
+    (latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx) = fetchTxLoc(settings)
     newData = (label, upTimeInMs, controllerUnixTimeInMs,
                latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx,
                latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
@@ -333,7 +355,8 @@ def createNewRecordSeries(settings, ser, db, cur):
     logging.info("Record series #" + str(recordSeriesId) + " inserted.")
     logging.info("    New data: " + str(newData))
 
-    return (recordSeriesId, newGpsId, newSerialData)
+    return (recordSeriesId, newGpsId, newSerialData,
+        (latInDegXe7Tx, lonInDegXe7Tx, altInMmMeanSeaLevelTx))
 
 def updateCurrentRecordSeriesWithTxTimestamps():
     return None
@@ -406,8 +429,63 @@ def sendGpsDataToDatabase(recordSeriesId, gpsSerialData,
 
     return gpsId
 
-def adjustServosWhenNecessary(ser, cur, printSurfix=''):
+def adjustServos(ser, cur, printSurfix=''):
     pass
+
+def fetchRxGps():
+    pass
+
+def setServoPwmSignals(ser, pwmX, pwmZ):
+    '''
+    Set PWM signal outputs on the Arduino board via the serial port ser.
+    '''
+    if pwmX is not None:
+        serialComm = 'X'+str(int(round(pwmX)))+'\n'
+        ser.write(serialComm.encode('utf-8'))
+        logging.info("New PWD value for X-axis servo: " + str(pwmX))
+
+    if pwmZ is not None:
+        serialComm = 'Z'+str(int(round(pwmZ)))+'\n'
+        ser.write(serialComm.encode('utf-8'))
+        logging.info("New PWD value for Z-axis servo: " + str(pwmZ))
+
+def stopServos(ser):
+    '''
+    Stop the servos.
+    '''
+    setServoPwmSignals(ser, MID_PWM, MID_PWM)
+
+def freezeArduino(ser):
+    '''
+    Freeze the Arduino. This will stop the servos and freeze the Arduino.
+    '''
+    ser.write(b"s")
+
+def setServoSpeeds(ser, speedX, speedZ,
+                   minPwm = MIN_PWM, midPwd = MID_PWM, maxPwm = MAX_PWM):
+    '''
+    Set servo speeds (-1 to +1) via the serial port ser.
+
+    The inputs speedX and speedZ should be in the range -1.0 to 1.0. A value of
+    minPwm/midPwd/maxPwm will be set on the Arduino board for the speed value of
+    -1.0/0.0/1.0 for the corresponding servos. Other PWM values will be computed
+    via linear interpretation.
+    '''
+    if speedX is not None:
+        speedX = min(max(float(speedX), -1.0), 1.0)
+        pwmX = int(round(np.interp(speedX, (-1, 0, 1),
+            (MIN_PWM, MID_PWM, MAX_PWM))))
+    else:
+        pwmX = None
+
+    if speedZ is not None:
+        speedZ = min(max(float(speedZ), -1.0), 1.0)
+        pwmZ = int(round(np.interp(speedZ, (-1, 0, 1),
+            (MIN_PWM, MID_PWM, MAX_PWM))))
+    else:
+        pwmZ = None
+
+    setServoPwmSignals(ser, pwmX, pwmZ)
 
 def main():
     curDirName = os.path.dirname(__file__)
@@ -500,22 +578,38 @@ def main():
             try:
                 # Initialize the cache variables for checking when new data is
                 # available for realign the antenna.
-                currentGpsId = None
-                currentImuId = None
-                currentGpsIdCounterPart = None
+
+                # (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
+                currentGps     = None
+                currentImuQuat = None # (quatReal, quatI, quatJ, quatK)
+                currentImuMag  = None # (magX, magY, magZ)
+                # (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
+                currentGpsCounterpart = None
+
+                # We will need to adjust the servos if new GPS or IMU data
+                # become available.
+                flagNeedToAdjustServos = True
 
                 if controllerSide == 'rx':
                     # Only the RX can create new record in the table
                     # record_series.
-                    (currentRecordSeriesId, currentGpsId,
-                        currentGpsSerialData) = createNewRecordSeries(
+                    (currentRecordSeriesId, _,
+                        currentGpsSerialData, txLoc) = createNewRecordSeries(
                         settings, serPortToArduino,
                         databaseConnection, databaseCur)
+                    # Extract (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel).
+                    currentGps = currentGpsSerialData[3:6]
+                    currentGpsCounterpart = txLoc
                 elif controllerSide == 'tx':
-                    # The RX will wait for new RX data entries and fetch and
-                    # update the latest record_series record accordingly.
+                    # TODO: The RX will wait for new RX data entries and fetch
+                    # and update the latest record_series record accordingly.
                     currentRecordSeriesId = fetchCurrentRecordSeries(databaseCur)
                     updateCurrentRecordSeriesWithTxTimestamps(databaseCur)
+                    # Fetch (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel) for
+                    # the TX.
+                    currentGps = fetchTxLoc(settings)
+                    # TODO: Fetch the latest RX loc.
+                    currentGpsCounterpart = fetchRxGps()
 
                 while(True):
                     # Fetch and process all incoming messages from the Arduino.
@@ -524,19 +618,40 @@ def main():
 
                     # GPS package generates 22 values.
                     if (sensorData is not None) and len(sensorData)==22:
-                        newGpsId = sendGpsDataToDatabase(
-                            currentRecordSeriesId, sensorData,
+                        newGpsSerialData = sensorData
+                        sendGpsDataToDatabase(
+                            currentRecordSeriesId, newGpsSerialData,
                             controllerSide, databaseConnection, databaseCur)
+                        currentGps = newGpsSerialData[3:6]
+                        flagNeedToAdjustServos = True
                     # IMU package generates 11 values.
                     elif (sensorData is not None) and len(sensorData)==11:
-                        newImuId = sendImuDataToDatabase(
-                            currentRecordSeriesId, sensorData,
+                        newImuSerialData = sensorData
+                        sendImuDataToDatabase(
+                            currentRecordSeriesId, newImuSerialData,
                             controllerSide, databaseConnection, databaseCur)
+                        currentImuQuat = newImuSerialData[1:5]
+                        currentImuMag  = newImuSerialData[6:9]
+                        flagNeedToAdjustServos = True
+
+                    # Counter part GPS location can change if this is the TX
+                    # side.
+                    if controllerSide == 'tx':
+                        lastGpsCounterpart = currentGpsCounterpart
+                        currentGpsCounterpart = fetchRxGps()
+                        if ((lastGpsCounterpart is not None)
+                             and (currentGpsCounterpart is not None)
+                             and (currentGpsCounterpart != lastGpsCounterpart)):
+                            flagNeedToAdjustServos = True
 
                     # Compute and adjust the PMW signals if necessary.
-                    adjustServosWhenNecessary(serPortToArduino, databaseCur,
-                        '    Arduino (Motor Adjustment): ')
+                    if flagNeedToAdjustServos:
+                        adjustServos(serPortToArduino, currentGps,
+                            '    Arduino (Motor Adjustment): ')
+                        flagNeedToAdjustServos = False
             finally:
+                # TODO
+                stopServos()
                 databaseConnection.close()
                 databaseCur.close()
 

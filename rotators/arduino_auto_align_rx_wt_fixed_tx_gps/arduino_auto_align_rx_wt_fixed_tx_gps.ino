@@ -45,9 +45,9 @@
 #define DEBUG false
 
 // The PWM range for the continuous servos.
-#define MAX_PWM 2000
-#define MID_PWM 1500
 #define MIN_PWM 1000
+#define MID_PWM 1500
+#define MAX_PWM 2000
 
 // For converting data to bytes for serial communication.
 #define FLOAT_SIZE_IN_BYTE         4
@@ -63,7 +63,8 @@ Servo servoX, servoZ;
 
 // Time to wait for sensors in millisecond.
 int timeToWaitForSensorsInMs = 100;
-// IMU data update period in millisecond.
+// IMU data update period in millisecond. We use a relatively low sample rate to
+// limit the CPU consumption of the controller PC.
 int imuPeriodInMs = 100;
 // GPS data update period in millisecond.
 int gpsPeriodInMs = 100;
@@ -114,7 +115,7 @@ void setup() {
   }
   // Set the I2C port to output UBX only (turn off NMEA noise).
   rtkGps.setI2COutput(COM_TYPE_UBX);
-  rtkGps.setNavigationFrequency((int) 1000.0/gpsPeriodInMs);
+  rtkGps.setNavigationFrequency((int) (1000.0/gpsPeriodInMs));
   // Configure the GPS to update navigation reports automatically.
   rtkGps.setAutoPVT(true);
   rtkGps.saveConfiguration();
@@ -151,9 +152,21 @@ void loop() {
     switch (programCommand) {
       case 's':
         printCommand(programCommand);
+        servoX.writeMicroseconds(MID_PWM);
+        servoZ.writeMicroseconds(MID_PWM);
         Serial.println(F("#Freezing..."));
         while(true);
         break;
+      case 'x':
+        newPwmValue = Serial.readline().toInt();
+        servoX.writeMicroseconds(newPwmValue);
+        Serial.print(F("#Setting PWM for X-axis servo to "));
+        Serial.println(newPwmValue);
+      case 'z':
+        newPwmValue = Serial.readline().toInt();
+        servoZ.writeMicroseconds(newPwmValue);
+        Serial.print(F("#Setting PWM for Z-axis servo to "));
+        Serial.println(newPwmValue);
       default:
         break;
     }
