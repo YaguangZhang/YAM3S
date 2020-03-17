@@ -329,6 +329,10 @@ def createNewRecordSeries(settings, ser, db, cur):
                 # nonzero.
                 if all((latInDegXe7, lonInDegXe7, fixType)):
                     flagValidGpsPackageReceived = True
+                else:
+                    logging.info("Received invalid GPS data!")
+                    if fixType==0:
+                        logging.info("    GPS not fixed!")
         except Exception as err:
             logging.warning(
                 "Unknown error happened while waiting for valid GPS data!")
@@ -429,8 +433,8 @@ def sendGpsDataToDatabase(recordSeriesId, gpsSerialData,
 
     return gpsId
 
-def adjustServos(ser, cur, printSurfix=''):
-    pass
+def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart):
+    logging.info("Adjusting servos ...")
 
 def fetchRxGps():
     pass
@@ -646,12 +650,12 @@ def main():
 
                     # Compute and adjust the PMW signals if necessary.
                     if flagNeedToAdjustServos:
-                        adjustServos(serPortToArduino, currentGps,
-                            '    Arduino (Motor Adjustment): ')
+                        adjustServos(serPortToArduino,
+                            currentGps, currentImuQuat, currentImuMag,
+                            currentGpsCounterpart)
                         flagNeedToAdjustServos = False
             finally:
-                # TODO
-                stopServos()
+                stopServos(serPortToArduino)
                 databaseConnection.close()
                 databaseCur.close()
 

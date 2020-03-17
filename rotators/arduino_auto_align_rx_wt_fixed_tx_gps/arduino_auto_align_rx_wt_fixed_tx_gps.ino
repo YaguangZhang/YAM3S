@@ -82,6 +82,10 @@ BNO080 vrImu;
 // RTK GPS.
 SFE_UBLOX_GPS rtkGps;
 
+// For adjusting rotator servos.
+String newPwmStr = "";
+int newPwmValue = MID_PWM;
+
 void setup() {
   // Serial COM.
   Serial.begin(serialBoundRate);
@@ -94,11 +98,11 @@ void setup() {
 
   // IMU. Wait until the sensors are available.
   while (vrImu.begin() == false) {
-    Serial.println(F(
-      "#Error: VR IMU (BNO080) not detected at default I2C address!"));
-    Serial.print(F("#    We will try again after "));
-    Serial.print(timeToWaitForSensorsInMs);
-    Serial.println(F(" ms..."));
+    // Serial.println(F(
+    //   "#Error: VR IMU (BNO080) not detected at default I2C address!"));
+    // Serial.print(F("#    We will try again after "));
+    // Serial.print(timeToWaitForSensorsInMs);
+    // Serial.println(F(" ms..."));
     delay(timeToWaitForSensorsInMs);
   }
   vrImu.enableRotationVector(imuPeriodInMs);
@@ -106,11 +110,11 @@ void setup() {
 
   // RTK GPS.
   while (rtkGps.begin() == false) {
-    Serial.println(F(
-      "#Error: RTK GPS (u-blox) not detected at default I2C address!"));
-    Serial.print(F("#    We will try again after "));
-    Serial.print(timeToWaitForSensorsInMs);
-    Serial.println(F(" ms..."));
+    // Serial.println(F(
+    //   "#Error: RTK GPS (u-blox) not detected at default I2C address!"));
+    // Serial.print(F("#    We will try again after "));
+    // Serial.print(timeToWaitForSensorsInMs);
+    // Serial.println(F(" ms..."));
     delay(timeToWaitForSensorsInMs);
   }
   // Set the I2C port to output UBX only (turn off NMEA noise).
@@ -158,16 +162,30 @@ void loop() {
         while(true);
         break;
       case 'x':
-        newPwmValue = Serial.readline().toInt();
+        newPwmStr = Serial.readStringUntil('\n');
+        Serial.print(F("#Command received: "));
+        Serial.print(programCommand);
+        Serial.println(newPwmStr);
+        newPwmValue = newPwmStr.toInt();
+
         servoX.writeMicroseconds(newPwmValue);
         Serial.print(F("#Setting PWM for X-axis servo to "));
         Serial.println(newPwmValue);
+        break;
       case 'z':
-        newPwmValue = Serial.readline().toInt();
+        newPwmStr = Serial.readStringUntil('\n');
+        Serial.print(F("#Command received: "));
+        Serial.print(programCommand);
+        Serial.println(newPwmStr);
+        newPwmValue = newPwmStr.toInt();
+
         servoZ.writeMicroseconds(newPwmValue);
         Serial.print(F("#Setting PWM for Z-axis servo to "));
         Serial.println(newPwmValue);
+        break;
       default:
+        Serial.print(F("#Unkown command received: "));
+        Serial.println(programCommand);
         break;
     }
   }
