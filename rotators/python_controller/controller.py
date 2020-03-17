@@ -41,6 +41,9 @@ import struct
 # For more math functions.
 import numpy as np
 
+##############
+# Parameters #
+##############
 # For receiving data from serial communication.
 CHAR_SIZE_IN_BYTE  = 1          # char <=> short <=> int8_t
 
@@ -56,6 +59,9 @@ MIN_PWM = 1000
 MID_PWM = 1500
 MAX_PWM = 2000
 
+########################
+# Serial Communication #
+########################
 def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     '''
     Keep scanning all the serial ports until one with description constaining
@@ -267,6 +273,9 @@ def receiveDataFromSerial(ser, printSurfix=''):
                 + indicationByte + "!")
             return None
 
+###############
+# Data Upload #
+###############
 def fetchTxLoc(settings):
     '''
     Fetch the 3D location (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel) of the
@@ -365,18 +374,6 @@ def createNewRecordSeries(settings, ser, db, cur):
 def updateCurrentRecordSeriesWithTxTimestamps():
     return None
 
-def fetchNewRecordSeries(cur):
-    '''
-    Fetch the latest IMU and GPS information needed for antenna alignment.
-    '''
-    return None
-
-def fetchCurrentRecordSeries(cur):
-    '''
-    Fetch the current record_series row.
-    '''
-    return None # TODO: Output currentRecordSeriesId.
-
 def sendImuDataToDatabase(recordSeriesId, imuSerialData,
     controllerSide, db, cur):
     '''
@@ -433,11 +430,29 @@ def sendGpsDataToDatabase(recordSeriesId, gpsSerialData,
 
     return gpsId
 
-def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart):
-    logging.info("Adjusting servos ...")
+##################
+# Data Retrieval #
+##################
+def fetchNewRecordSeries(cur):
+    '''
+    Fetch the latest IMU and GPS information needed for antenna alignment.
+    '''
+    return None
+
+def fetchCurrentRecordSeries(cur):
+    '''
+    Fetch the current record_series row.
+    '''
+    return None # TODO: Output currentRecordSeriesId.
 
 def fetchRxGps():
     pass
+
+############
+# Rotation #
+############
+def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart):
+    logging.info("Adjusting servos ...")
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
     '''
@@ -491,6 +506,9 @@ def setServoSpeeds(ser, speedX, speedZ,
 
     setServoPwmSignals(ser, pwmX, pwmZ)
 
+##################
+# Main Procedure #
+##################
 def main():
     curDirName = os.path.dirname(__file__)
     fullPathToSettings = os.path.join(curDirName, '../../settings.json')
