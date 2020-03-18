@@ -250,19 +250,21 @@ def receiveDataFromSerial(ser, printSurfix=''):
     # data package arrive timestamp (with a tolerable offset).
     controllerUnixTimeInMs = int(time.time()*1000)
 
-    # Read in the indication byte and proceed accordingling.
+    # Read in the indication byte and proceed accordingly.
     while(ser.inWaiting()>0):
         indicationByte = receiveCharFromSerial(ser)
         if (indicationByte == '+'):
             # IMU data package (10 values): (upTimeInMs, quatReal, quatI, quatJ,
-            # quatK, quatRadianAccuracy, magX, magY, magZ, magAccuracy)
+            # quatK, quatRadianAccuracy, magX, magY, magZ, magAccuracy). We will
+            # prefix it with controllerUnixTimeInMs.
             return (controllerUnixTimeInMs,)+readImuPackageFromSerial(ser)
         elif (indicationByte == '@'):
             # GPS data package (21 values): (upTimeInMs, timeOfWeekInMs,
             # latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel, altInMmEllipsoid,
             # horAccuracyInMXe4, verAccuracyInMXe4, satsInView, fixType, year,
             # month, day, hour, minute, second, millisecond, nanosecond,
-            # speedInMPerSX3, headingInDegXe5, PDODXe2).
+            # speedInMPerSX3, headingInDegXe5, PDODXe2). We will
+            # prefix it with controllerUnixTimeInMs.
             return (controllerUnixTimeInMs,)+readGpsPackageFromSerial(ser)
         elif (indicationByte == '#'):
             # A message is received.
@@ -453,6 +455,8 @@ def fetchRxGps():
 ############
 def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart):
     logging.info("Adjusting servos ...")
+    moveToElevation(ser, imuQuat, 0,
+        0.1, 1, 5, 10)
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
     '''
@@ -505,6 +509,93 @@ def setServoSpeeds(ser, speedX, speedZ,
         pwmZ = None
 
     setServoPwmSignals(ser, pwmX, pwmZ)
+
+def moveToElevation(ser, imuQuat, targetEleInDeg,
+    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
+    absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
+    '''
+    Move the rotator to get closer to the target elevation angle.
+
+    - Inputs:
+        * imuQuat
+          - The current (quatReal, quatI, quatJ, quatK) values from the IMU.
+        * targetEleInDeg
+          - The target elevation in degrees. It should be an angel value in
+            [-180, 180], where "-" corresponds to "looking down" (and "+"
+            indicates "looking up").
+        * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
+          - The minimum and maximum absolute servo speeds to be used. Please see
+            the function setServoSpeeds for more information.
+        * absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10
+          - The absolute angle differences between the current position and the
+            target postion in degrees for dynamic servo speed adjustment. Within
+            this range, the servo speed will be set linearly according to the
+            angle difference such that the servo speed is 1) minAbsSpeedAllowed
+            at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
+            at/above angleDiffInDegForMaxSpeed.
+    '''
+    # Make sure the sensor data is valid before we continue.
+    if not all(imuQuat): return None
+
+    # We only need the rotation vector element for the X axis to compute the
+    # current rotation angle for adjusting the X-axis servo.
+    quatI= imuQuat[1]
+    xRotationAngleInDeg = quatI*180
+
+    # Determin how large the speed should be.
+    angleDiffInDeg = targetEleInDeg-xRotationAngleInDeg
+    absAngleDiffInDeg = abs(angleDiffInDeg)
+    if (absAngleDiffInDeg <= absAngleDiffInDegForMinSpeed):
+        speedX = minAbsSpeedAllowed
+    elif (absAngleDiffInDeg >= absAngleDiffInDegForMaxSpeed):
+        speedX = maxAbsSpeedAllowed
+    else:
+        speedX = np.interp(angleDiffInDeg,
+            (absAngleDiffInDegForMinSpeed, absAngleDiffInDegForMaxSpeed),
+            (minAbsSpeedAllowed, maxAbsSpeedAllowed))
+
+    # Set the rotation direction.
+    speedX = np.sign(angleDiffInDeg) * speedX
+
+    # Adjust the X-axis servo.
+    logging.info("Current elevation angle difference: ("
+        + str(targetEleInDeg) + ")-(" + str(xRotationAngleInDeg) + ")="
+        + str(angleDiffInDeg) + " degrees...")
+    logging.info("    Speed to set for X axis: " + str(speedX))
+    setServoSpeeds(ser, speedX, None)
+
+    return speedX
+
+def moveToAzimuth(ser, imuMag, targetAziInDeg,
+    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
+    angleDiffInDegForMinSpeed = 0, angleDiffInDegForMaxSpeed = 10):
+    '''
+    Move the rotator to get closer to the target azimuth angle.
+
+    - Inputs:
+        * imuMag
+          - The current (magX, magY, magZ) values from the IMU.
+        * targetAziInDeg
+          - The target azimuth in degrees. It should be an angel value in [-180,
+            180], where "-" corresponds to "counter-clockwise" (and "+"
+            indicates "clockwise") from north (which is not necessarily the
+            magnetic field direction on the x-y plane because of the magnetic
+            declination).
+        * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
+          - The minimum and maximum absolute servo speeds to be used. Please see
+            the function setServoSpeeds for more information.
+        * absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10
+          - The absolute angle differences between the current position and the
+            target postion in degrees for dynamic servo speed adjustment. Within
+            this range, the servo speed will be set linearly according to the
+            angle difference such that the servo speed is 1) minAbsSpeedAllowed
+            at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
+            at/above angleDiffInDegForMaxSpeed.
+    '''
+    # Make sure the sensor data is valid before we continue.
+    if not all(imuMag): return False
+
+    return True
 
 ##################
 # Main Procedure #
@@ -652,8 +743,8 @@ def main():
                         sendImuDataToDatabase(
                             currentRecordSeriesId, newImuSerialData,
                             controllerSide, databaseConnection, databaseCur)
-                        currentImuQuat = newImuSerialData[1:5]
-                        currentImuMag  = newImuSerialData[6:9]
+                        currentImuQuat = newImuSerialData[2:6]
+                        currentImuMag  = newImuSerialData[7:10]
                         flagNeedToAdjustServos = True
 
                     # Counter part GPS location can change if this is the TX
