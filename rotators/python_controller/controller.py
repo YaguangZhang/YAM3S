@@ -59,6 +59,20 @@ MIN_PWM = 1000
 MID_PWM = 1500
 MAX_PWM = 2000
 
+# For limiting servo adjustment frequency.
+lastUnixTimeInSForServoAdjustment = time.time()
+MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ = 5
+
+# TODO: Push down servo adjustment to Arduino.
+FLAG_COMPUTE_PWM_AT_ARDUINO = True
+
+# For fine-tuning servo adjustment when the servo speed is set by the
+# controller.
+MIN_ABS_SPEED_ALLOWED = 0.15
+MAX_ABS_SPEED_ALLOWED = 1
+ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED = 0
+ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED = 90
+
 ########################
 # Serial Communication #
 ########################
@@ -453,10 +467,13 @@ def fetchRxGps():
 ############
 # Rotation #
 ############
-def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart):
+def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart,
+    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
+    absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
     logging.info("Adjusting servos ...")
     moveToElevation(ser, imuQuat, 0,
-        0.1, 1, 5, 10)
+        minAbsSpeedAllowed, maxAbsSpeedAllowed,
+        absAngleDiffInDegForMinSpeed, absAngleDiffInDegForMaxSpeed)
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
     '''
@@ -514,7 +531,8 @@ def moveToElevation(ser, imuQuat, targetEleInDeg,
     minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
     absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
     '''
-    Move the rotator to get closer to the target elevation angle.
+    Move the rotator to get closer to the target elevation angle via serial port
+    commands.
 
     - Inputs:
         * imuQuat
@@ -570,8 +588,8 @@ def moveToAzimuth(ser, imuMag, targetAziInDeg,
     minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
     angleDiffInDegForMinSpeed = 0, angleDiffInDegForMaxSpeed = 10):
     '''
-    Move the rotator to get closer to the target azimuth angle.
-
+    Move the rotator to get closer to the target azimuth angle via serial port
+    commands.
     - Inputs:
         * imuMag
           - The current (magX, magY, magZ) values from the IMU.
@@ -626,6 +644,10 @@ def main():
 
         # Fetching and displaying all incoming messages from the Arduino.
         waitForDataOnSerial(serPortToArduino)
+        # The servos were successfully initialized.
+        lastUnixTimeInSForServoAdjustment = time.time()
+        minTimeInSToWaitForServoAdjustment = 1/MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ
+
         printAllSerData(serPortToArduino,
             '    Arduino (Raw Message during Initialization): ')
 
@@ -758,10 +780,16 @@ def main():
                             flagNeedToAdjustServos = True
 
                     # Compute and adjust the PMW signals if necessary.
-                    if flagNeedToAdjustServos:
+                    if flagNeedToAdjustServos and (
+                        time.time()-lastUnixTimeInSForServoAdjustment
+                        >= minTimeInSToWaitForServoAdjustment):
                         adjustServos(serPortToArduino,
                             currentGps, currentImuQuat, currentImuMag,
-                            currentGpsCounterpart)
+                            currentGpsCounterpart,
+                            MIN_ABS_SPEED_ALLOWED, MAX_ABS_SPEED_ALLOWED,
+                            ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED,
+                            ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED)
+                        lastUnixTimeInSForServoAdjustment = time.time()
                         flagNeedToAdjustServos = False
             finally:
                 stopServos(serPortToArduino)

@@ -86,6 +86,8 @@ SFE_UBLOX_GPS rtkGps;
 String newPwmStr = "";
 int newPwmValue = MID_PWM;
 
+// TODO: Limit servo adjustment frequency.
+
 void setup() {
   // Serial COM.
   Serial.begin(serialBoundRate);
@@ -149,7 +151,7 @@ void setup() {
 }
 
 void loop() {
-  // React to the command from the serial port.
+  // React to the command from the serial port with the highest priority.
   if (Serial.available() > 0) {
     programCommand = toLowerCase(Serial.read());
 
@@ -163,25 +165,33 @@ void loop() {
         break;
       case 'x':
         newPwmStr = Serial.readStringUntil('\n');
-        Serial.print(F("#Command received: "));
-        Serial.print(programCommand);
-        Serial.println(newPwmStr);
         newPwmValue = newPwmStr.toInt();
 
         servoX.writeMicroseconds(newPwmValue);
-        Serial.print(F("#Setting PWM for X-axis servo to "));
-        Serial.println(newPwmValue);
+
+        // Debug info.
+        if (DEBUG) {
+          Serial.print(F("#Command received: "));
+          Serial.print(programCommand);
+          Serial.println(newPwmStr);
+          Serial.print(F("#Setting PWM for X-axis servo to "));
+          Serial.println(newPwmValue);
+        }
         break;
       case 'z':
         newPwmStr = Serial.readStringUntil('\n');
-        Serial.print(F("#Command received: "));
-        Serial.print(programCommand);
-        Serial.println(newPwmStr);
         newPwmValue = newPwmStr.toInt();
 
         servoZ.writeMicroseconds(newPwmValue);
-        Serial.print(F("#Setting PWM for Z-axis servo to "));
-        Serial.println(newPwmValue);
+
+        // Debug info.
+        if (DEBUG) {
+          Serial.print(F("#Command received: "));
+          Serial.print(programCommand);
+          Serial.println(newPwmStr);
+          Serial.print(F("#Setting PWM for Z-axis servo to "));
+          Serial.println(newPwmValue);
+        }
         break;
       default:
         Serial.print(F("#Unkown command received: "));
@@ -189,77 +199,11 @@ void loop() {
         break;
     }
   }
-
-  // Read the IMU data.
-  if (vrImu.dataAvailable() == true) {
-    // Arduino up time.
-    unsigned long upTimeInMs = millis();
-
-    // Fetch IMU data.
-    float quatReal = vrImu.getQuatReal();
-    float quatI = vrImu.getQuatI();
-    float quatJ = vrImu.getQuatJ();
-    float quatK = vrImu.getQuatK();
-    float quatRadianAccuracy = vrImu.getQuatRadianAccuracy();
-
-    float magX = vrImu.getMagX();
-    float magY = vrImu.getMagY();
-    float magZ = vrImu.getMagZ();
-    byte magAccuracy = vrImu.getMagAccuracy();
-
-    // Debug info.
-    if (DEBUG) {
-      Serial.print(F("#Up time: "));
-      Serial.print(upTimeInMs);
-      Serial.println(F(" ms"));
-
-      Serial.print(F("#Rotation vector: "));
-      Serial.print(quatReal, 2);
-      Serial.print(F(","));
-      Serial.print(quatI, 2);
-      Serial.print(F(","));
-      Serial.print(quatJ, 2);
-      Serial.print(F(","));
-      Serial.print(quatK, 2);
-      Serial.print(F(","));
-      Serial.print(quatRadianAccuracy, 2);
-
-      Serial.println();
-
-      Serial.print(F("#Magnetometer: "));
-      Serial.print(magX, 2);
-      Serial.print(F(","));
-      Serial.print(magY, 2);
-      Serial.print(F(","));
-      Serial.print(magZ, 2);
-      Serial.print(F(","));
-      printAccuracyLevel(magAccuracy);
-
-      Serial.println();
-    }
-
-    // Send data over serial.
-    Serial.print(F("+"));
-    sendUnsignedLong(upTimeInMs);
-    sendFloat(quatReal);
-    sendFloat(quatI);
-    sendFloat(quatJ);
-    sendFloat(quatK);
-    sendFloat(quatRadianAccuracy);
-    sendFloat(magX);
-    sendFloat(magY);
-    sendFloat(magZ);
-    printAccuracyLevel(magAccuracy);
-
-    // End of package.
-    Serial.println();
-  }
-
   // Read the GPS data. Reference for data types:
   //   - long <=> int32_t
   //   - int  <=> int16_t
   //   - byte <=> int8_t
-  if (rtkGps.getPVT() == true) {
+  else if (rtkGps.getPVT() == true) {
     // Arduino up time.
     unsigned long upTimeInMs = millis();
 
@@ -391,6 +335,70 @@ void loop() {
     sendLong(speedInMPerSX3);
     sendLong(headingInDegXe5);
     sendUnsignedInt(PDODXe2);
+
+    // End of package.
+    Serial.println();
+  }
+  // Read the IMU data.
+  else if (vrImu.dataAvailable() == true) {
+    // Arduino up time.
+    unsigned long upTimeInMs = millis();
+
+    // Fetch IMU data.
+    float quatReal = vrImu.getQuatReal();
+    float quatI = vrImu.getQuatI();
+    float quatJ = vrImu.getQuatJ();
+    float quatK = vrImu.getQuatK();
+    float quatRadianAccuracy = vrImu.getQuatRadianAccuracy();
+
+    float magX = vrImu.getMagX();
+    float magY = vrImu.getMagY();
+    float magZ = vrImu.getMagZ();
+    byte magAccuracy = vrImu.getMagAccuracy();
+
+    // Debug info.
+    if (DEBUG) {
+      Serial.print(F("#Up time: "));
+      Serial.print(upTimeInMs);
+      Serial.println(F(" ms"));
+
+      Serial.print(F("#Rotation vector: "));
+      Serial.print(quatReal, 2);
+      Serial.print(F(","));
+      Serial.print(quatI, 2);
+      Serial.print(F(","));
+      Serial.print(quatJ, 2);
+      Serial.print(F(","));
+      Serial.print(quatK, 2);
+      Serial.print(F(","));
+      Serial.print(quatRadianAccuracy, 2);
+
+      Serial.println();
+
+      Serial.print(F("#Magnetometer: "));
+      Serial.print(magX, 2);
+      Serial.print(F(","));
+      Serial.print(magY, 2);
+      Serial.print(F(","));
+      Serial.print(magZ, 2);
+      Serial.print(F(","));
+      printAccuracyLevel(magAccuracy);
+
+      Serial.println();
+    }
+
+    // Send data over serial.
+    Serial.print(F("+"));
+    sendUnsignedLong(upTimeInMs);
+    sendFloat(quatReal);
+    sendFloat(quatI);
+    sendFloat(quatJ);
+    sendFloat(quatK);
+    sendFloat(quatRadianAccuracy);
+    sendFloat(magX);
+    sendFloat(magY);
+    sendFloat(magZ);
+    printAccuracyLevel(magAccuracy);
 
     // End of package.
     Serial.println();
