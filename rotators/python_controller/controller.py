@@ -35,11 +35,10 @@ import mysql.connector
 # For receiving float type data over the serial port.
 import struct
 
-# For comprehending quaternions.
-#   - from scipy.spatial.transform import Rotation as R
-
 # For more math functions.
 import numpy as np
+# For comprehending quaternions.
+from scipy.spatial.transform import Rotation as R
 
 ##############
 # Parameters #
@@ -68,10 +67,10 @@ FLAG_COMPUTE_PWM_AT_ARDUINO = True
 
 # For fine-tuning servo adjustment when the servo speed is set by the
 # controller.
-MIN_ABS_SPEED_ALLOWED = 0.15
+MIN_ABS_SPEED_ALLOWED = 0.1
 MAX_ABS_SPEED_ALLOWED = 1
 ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED = 0
-ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED = 90
+ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED = 45
 
 ########################
 # Serial Communication #
@@ -467,13 +466,53 @@ def fetchRxGps():
 ############
 # Rotation #
 ############
-def adjustServos(ser, gps, imuQuat, imuMag, gpsCounterpart,
+def adjustServos(ser, gps, imuQuat, gpsCounterpart,
     minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
     absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
     logging.info("Adjusting servos ...")
-    moveToElevation(ser, imuQuat, 0,
+    '''
+    Adjust the servos to align TX and RX antennas.
+
+    - Inputs
+        * gps, gpsCounterpart
+          - The GPS locations (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
+            for the rotator under control and the counterpart rotator,
+            respectively.
+        * imuQuat
+          - The current (quatReal, quatI, quatJ, quatK) values from the IMU.
+    '''
+    # Make sure the sensor readings are valid before we continue.
+    if not all(gps + imuQuat + gpsCounterpart): return None
+
+    # Unpack the IMU data for clarity.
+    (quatReal, quatI, quatJ, quatK) = imuQuat
+    # We only need the rotation vector element for the X (Z) axis to compute the
+    # current rotation angle for adjusting the X-axis (Z-axis) servo.
+    r = R.from_quat([quatI, quatJ, quatK, quatReal])
+    curEle, _, curEle = r.as_euler('zyx', degrees=True)
+
+    # Compute the target elevation and azimuth angles in degrees from the
+    # rotator GPS locations.
+    (tarEle, tarAzi) = computeTargetAnglesInDegFromGps(gps, gpsCounterpart)
+    moveToElevation(ser, curEle, tarEle,
         minAbsSpeedAllowed, maxAbsSpeedAllowed,
         absAngleDiffInDegForMinSpeed, absAngleDiffInDegForMaxSpeed)
+
+# TODO
+def computeTargetAnglesInDegFromGps(gps, gpsCounterpart):
+    '''
+    Compute target elevation and azimuth angles in degrees from the rotator GPS
+    locations.
+
+    - Inputs
+        * gps, gpsCounterpart
+          - The GPS locations (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
+            for the rotator under control and the counterpart rotator,
+            respectively.
+    '''
+    # For testing.
+    tarEle, tarAzi = (30, 0)
+    return (tarEle, tarAzi)
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
     '''
@@ -527,20 +566,17 @@ def setServoSpeeds(ser, speedX, speedZ,
 
     setServoPwmSignals(ser, pwmX, pwmZ)
 
-def moveToElevation(ser, imuQuat, targetEleInDeg,
+def moveToElevation(ser, eleInDeg, targetEleInDeg,
     minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
     absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
     '''
-    Move the rotator to get closer to the target elevation angle via serial port
-    commands.
+    Move the rotator to get closer to the target elevation angle.
 
     - Inputs:
-        * imuQuat
-          - The current (quatReal, quatI, quatJ, quatK) values from the IMU.
-        * targetEleInDeg
-          - The target elevation in degrees. It should be an angel value in
-            [-180, 180], where "-" corresponds to "looking down" (and "+"
-            indicates "looking up").
+        * eleInDeg, targetEleInDeg
+          - The current and target elevations in degrees, respectively. They
+            should be angel values in [-180, 180], where "-" corresponds to
+            "looking down" (and "+" indicates "looking up").
         * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
           - The minimum and maximum absolute servo speeds to be used. Please see
             the function setServoSpeeds for more information.
@@ -552,16 +588,8 @@ def moveToElevation(ser, imuQuat, targetEleInDeg,
             at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
             at/above angleDiffInDegForMaxSpeed.
     '''
-    # Make sure the sensor data is valid before we continue.
-    if not all(imuQuat): return None
-
-    # We only need the rotation vector element for the X axis to compute the
-    # current rotation angle for adjusting the X-axis servo.
-    quatI= imuQuat[1]
-    xRotationAngleInDeg = quatI*180
-
     # Determin how large the speed should be.
-    angleDiffInDeg = targetEleInDeg-xRotationAngleInDeg
+    angleDiffInDeg = targetEleInDeg-eleInDeg
     absAngleDiffInDeg = abs(angleDiffInDeg)
     if (absAngleDiffInDeg <= absAngleDiffInDegForMinSpeed):
         speedX = minAbsSpeedAllowed
@@ -577,28 +605,27 @@ def moveToElevation(ser, imuQuat, targetEleInDeg,
 
     # Adjust the X-axis servo.
     logging.info("Current elevation angle difference: ("
-        + str(targetEleInDeg) + ")-(" + str(xRotationAngleInDeg) + ")="
+        + str(targetEleInDeg) + ")-(" + str(eleInDeg) + ")="
         + str(angleDiffInDeg) + " degrees...")
     logging.info("    Speed to set for X axis: " + str(speedX))
     setServoSpeeds(ser, speedX, None)
 
     return speedX
 
-def moveToAzimuth(ser, imuMag, targetAziInDeg,
+# TODO
+def moveToAzimuth(ser, aziInDeg, targetAziInDeg,
     minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
     angleDiffInDegForMinSpeed = 0, angleDiffInDegForMaxSpeed = 10):
     '''
-    Move the rotator to get closer to the target azimuth angle via serial port
-    commands.
+    Move the rotator to get closer to the target azimuth angle.
+
     - Inputs:
-        * imuMag
-          - The current (magX, magY, magZ) values from the IMU.
-        * targetAziInDeg
-          - The target azimuth in degrees. It should be an angel value in [-180,
-            180], where "-" corresponds to "counter-clockwise" (and "+"
-            indicates "clockwise") from north (which is not necessarily the
-            magnetic field direction on the x-y plane because of the magnetic
-            declination).
+        * aziInDeg, targetAziInDeg
+          - The current and target azimuths in degrees, respectively. They
+            should be angel values in [-180, 180], where "-" corresponds to
+            "counter-clockwise" (and "+" indicates "clockwise") from north
+            (which is not necessarily the magnetic field direction on the x-y
+            plane because of the magnetic declination).
         * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
           - The minimum and maximum absolute servo speeds to be used. Please see
             the function setServoSpeeds for more information.
@@ -610,10 +637,7 @@ def moveToAzimuth(ser, imuMag, targetAziInDeg,
             at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
             at/above angleDiffInDegForMaxSpeed.
     '''
-    # Make sure the sensor data is valid before we continue.
-    if not all(imuMag): return False
-
-    return True
+    pass
 
 ##################
 # Main Procedure #
@@ -784,7 +808,7 @@ def main():
                         time.time()-lastUnixTimeInSForServoAdjustment
                         >= minTimeInSToWaitForServoAdjustment):
                         adjustServos(serPortToArduino,
-                            currentGps, currentImuQuat, currentImuMag,
+                            currentGps, currentImuQuat,
                             currentGpsCounterpart,
                             MIN_ABS_SPEED_ALLOWED, MAX_ABS_SPEED_ALLOWED,
                             ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED,

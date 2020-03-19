@@ -63,11 +63,11 @@ Servo servoX, servoZ;
 
 // Time to wait for sensors in millisecond.
 int timeToWaitForSensorsInMs = 100;
-// IMU data update period in millisecond. We use a relatively low sample rate to
-// limit the CPU consumption of the controller PC.
-int imuPeriodInMs = 100;
-// GPS data update period in millisecond.
-int gpsPeriodInMs = 100;
+
+// We use relatively low sample rates to limit the computation resource
+// consumption of the Arduino board and the controller PC.
+int imuPeriodInMs = 100; // IMU data update period in millisecond.
+int gpsPeriodInMs = 500; // GPS data update period in millisecond.
 
 // Communication parameters.
 long serialBoundRate = 115200;
@@ -86,7 +86,11 @@ SFE_UBLOX_GPS rtkGps;
 String newPwmStr = "";
 int newPwmValue = MID_PWM;
 
-// TODO: Limit servo adjustment frequency.
+// For limiting servo adjustment frequency.
+int maxServoAdjustmentFreqInHz = 5;
+// For limiting effective time for each servo adjustment.
+unsigned long lastUpTimeInMsForServoAdjustment;
+int minTimeInMsToWaitForServoAdjustment = 1000/maxServoAdjustmentFreqInHz;
 
 void setup() {
   // Serial COM.
@@ -132,6 +136,8 @@ void setup() {
 
   servoX.writeMicroseconds(MID_PWM);
   servoZ.writeMicroseconds(MID_PWM);
+  // The servos were successfully initialized.
+  lastUpTimeInMsForServoAdjustment = millis();
 
   // If there is no errors in the Arduino initialization, this will be the first
   // message to the controller.
@@ -151,6 +157,13 @@ void setup() {
 }
 
 void loop() {
+  // Stop servos if the last adjustment has last long enough time.
+  if (millis()-lastUpTimeInMsForServoAdjustment
+    >=minTimeInMsToWaitForServoAdjustment) {
+      servoX.writeMicroseconds(MID_PWM);
+      servoZ.writeMicroseconds(MID_PWM);
+  }
+
   // React to the command from the serial port with the highest priority.
   if (Serial.available() > 0) {
     programCommand = toLowerCase(Serial.read());
@@ -168,6 +181,7 @@ void loop() {
         newPwmValue = newPwmStr.toInt();
 
         servoX.writeMicroseconds(newPwmValue);
+        lastUpTimeInMsForServoAdjustment = millis();
 
         // Debug info.
         if (DEBUG) {
@@ -183,6 +197,7 @@ void loop() {
         newPwmValue = newPwmStr.toInt();
 
         servoZ.writeMicroseconds(newPwmValue);
+        lastUpTimeInMsForServoAdjustment = millis();
 
         // Debug info.
         if (DEBUG) {
