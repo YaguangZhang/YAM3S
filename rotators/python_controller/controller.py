@@ -65,16 +65,16 @@ MAX_PWM = 2000
 
 # For limiting servo adjustment frequency.
 lastUnixTimeInSForServoAdjustment = time.time()
-MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ = 2
+MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ = 10
 
 # TODO: Push down servo adjustment to Arduino.
 FLAG_COMPUTE_PWM_AT_ARDUINO = True
 
 # For fine-tuning servo adjustment when the servo speed is set by the
 # controller.
-PID_P_X = 0.01
-PID_I_X = 0.001
-PID_D_X = 0.0005
+PID_P_X = 0.03   # K_c = 0.5
+PID_I_X = 0.0018 # P_c = 0.0036
+PID_D_X = 0.00045
 PID_P_Z = 0
 PID_I_Z = 0
 PID_D_Z = 0

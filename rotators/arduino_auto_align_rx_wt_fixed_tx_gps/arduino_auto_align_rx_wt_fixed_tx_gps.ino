@@ -88,7 +88,7 @@ String newPwmStr = "";
 int newPwmValue = MID_PWM;
 
 // For limiting servo adjustment frequency.
-int maxServoAdjustmentFreqInHz = 2;
+int maxServoAdjustmentFreqInHz = 10;
 // For limiting effective time for each servo adjustment.
 volatile unsigned long lastUpTimeInMsForServoAdjustment;
 int minTimeInMsToWaitForServoAdjustment = 1000/maxServoAdjustmentFreqInHz;
