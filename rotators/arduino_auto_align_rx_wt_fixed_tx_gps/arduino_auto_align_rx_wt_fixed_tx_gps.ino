@@ -65,9 +65,10 @@ Servo servoX, servoZ;
 int timeToWaitForSensorsInMs = 100;
 
 // We use relatively low sample rates to limit the computation resource
-// consumption of the Arduino board and the controller PC.
+// consumption of the Arduino board and the controller PC. However, note that if
+// the GPS sensor is set to update too slowly, it may block the code for too long.
 int imuPeriodInMs = 100; // IMU data update period in millisecond.
-int gpsPeriodInMs = 500; // GPS data update period in millisecond.
+int gpsPeriodInMs = 100; // GPS data update period in millisecond.
 
 // Communication parameters.
 long serialBoundRate = 115200;
@@ -87,9 +88,9 @@ String newPwmStr = "";
 int newPwmValue = MID_PWM;
 
 // For limiting servo adjustment frequency.
-int maxServoAdjustmentFreqInHz = 5;
+int maxServoAdjustmentFreqInHz = 2;
 // For limiting effective time for each servo adjustment.
-unsigned long lastUpTimeInMsForServoAdjustment;
+volatile unsigned long lastUpTimeInMsForServoAdjustment;
 int minTimeInMsToWaitForServoAdjustment = 1000/maxServoAdjustmentFreqInHz;
 
 void setup() {
@@ -139,6 +140,14 @@ void setup() {
   // The servos were successfully initialized.
   lastUpTimeInMsForServoAdjustment = millis();
 
+  // Limit the effective time of the lastest servo adjustment using a timer
+  // interrupt. This is crucial because reading GPS data may block the code for
+  // hundreds of milliseconds, which may cause too much rotation of the servo.
+  // Timer0 is already used for millis() - we'll just interrupt somewhere in the
+  // middle and call the "Compare A" function below
+  OCR0A = 0xAF; // 127 is roughly the center of 0 to 255.
+  TIMSK0 |= _BV(OCIE0A);
+
   // If there is no errors in the Arduino initialization, this will be the first
   // message to the controller.
   Serial.println(F("#Initialization succeeded! "
@@ -156,7 +165,10 @@ void setup() {
   }
 }
 
-void loop() {
+// Interrupt is called once a millisecond, to check whether it is necessary to
+// stop motors.
+SIGNAL(TIMER0_COMPA_vect)
+{
   // Stop servos if the last adjustment has lasted long enough time.
   if (lastUpTimeInMsForServoAdjustment>0) {
     if (millis()-lastUpTimeInMsForServoAdjustment
@@ -167,7 +179,9 @@ void loop() {
         lastUpTimeInMsForServoAdjustment = 0;
     }
   }
+}
 
+void loop() {
   // React to the command from the serial port with the highest priority.
   if (Serial.available() > 0) {
     programCommand = toLowerCase(Serial.read());

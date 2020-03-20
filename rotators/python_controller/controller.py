@@ -18,7 +18,8 @@
 import os
 import time, datetime
 import logging, sys
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+logFormatter = '%(asctime)s - %(levelname)s - %(message)s'
+logging.basicConfig(stream=sys.stderr,format=logFormatter,level=logging.DEBUG)
 
 # For loading settings.
 import json
@@ -64,7 +65,7 @@ MAX_PWM = 2000
 
 # For limiting servo adjustment frequency.
 lastUnixTimeInSForServoAdjustment = time.time()
-MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ = 5
+MAX_SERVO_ADJUSTMENT_FREQUENCY_IN_HZ = 2
 
 # TODO: Push down servo adjustment to Arduino.
 FLAG_COMPUTE_PWM_AT_ARDUINO = True
@@ -291,8 +292,9 @@ def receiveDataFromSerial(ser, printSurfix=''):
             logging.info(printSurfix + ser.readline().decode("utf-8").rstrip())
             return None
         else:
-            logging.warning("Unknown serial data stream type: "
-                + indicationByte + "!")
+            messageFromArduino = ser.readline()
+            logging.warning("Unknown serial message: \n    "
+                + indicationByte + messageFromArduino.decode("utf-8"))
             return None
 
 ###############
@@ -517,7 +519,7 @@ def computeTargetAnglesInDegFromGps(gps, gpsCounterpart):
             respectively.
     '''
     # For testing.
-    tarEle, tarAzi = (30, 0)
+    tarEle, tarAzi = (0, 0)
     return (tarEle, tarAzi)
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
