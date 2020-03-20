@@ -6,10 +6,11 @@
 #   - send the servo adjustment info to Arduino.
 #
 # Developed and tested using Python 3.8.1 (with libraries SciPy, pyserial,
-# sshtunnel and mysql-connector-python) and MySQL Community Server - GPL v8.0.19
-# on Windows 10 machines. To install the Python libraries, one could run:
+# simple-pid, sshtunnel and mysql-connector-python) and MySQL Community Server -
+# GPL v8.0.19 on Windows 10 machines. To install the Python libraries, one could
+# run:
 #
-#   pip install scipy pyserial sshtunnel mysql-connector-python
+#   pip install scipy pyserial simple-pid sshtunnel mysql-connector-python
 #
 # Yaguang Zhang, Purdue University, 2020/02/03
 
@@ -24,6 +25,9 @@ import json
 
 # For locating the serial port of the Arduino board.
 import serial.tools.list_ports
+
+# For servo adjustment.
+from simple_pid import PID
 
 # For ssh port forwarding.
 import paramiko
@@ -67,10 +71,13 @@ FLAG_COMPUTE_PWM_AT_ARDUINO = True
 
 # For fine-tuning servo adjustment when the servo speed is set by the
 # controller.
-MIN_ABS_SPEED_ALLOWED = 0.1
-MAX_ABS_SPEED_ALLOWED = 1
-ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED = 0
-ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED = 45
+PID_P_X = 0.01
+PID_I_X = 0.001
+PID_D_X = 0.0005
+PID_P_Z = 0
+PID_I_Z = 0
+PID_D_Z = 0
+PID_OUTPUT_LIMITS = (-1, 1)
 
 ########################
 # Serial Communication #
@@ -466,9 +473,7 @@ def fetchRxGps():
 ############
 # Rotation #
 ############
-def adjustServos(ser, gps, imuQuat, gpsCounterpart,
-    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
-    absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
+def adjustServos(ser, gps, imuQuat, gpsCounterpart, pidX, pidZ):
     logging.info("Adjusting servos ...")
     '''
     Adjust the servos to align TX and RX antennas.
@@ -480,6 +485,9 @@ def adjustServos(ser, gps, imuQuat, gpsCounterpart,
             respectively.
         * imuQuat
           - The current (quatReal, quatI, quatJ, quatK) values from the IMU.
+        * pidX, pidZ
+          - simple_pid controllers for the X-axis and Z-axis servos,
+            respectively.
     '''
     # Make sure the sensor readings are valid before we continue.
     if not all(gps + imuQuat + gpsCounterpart): return None
@@ -494,9 +502,7 @@ def adjustServos(ser, gps, imuQuat, gpsCounterpart,
     # Compute the target elevation and azimuth angles in degrees from the
     # rotator GPS locations.
     (tarEle, tarAzi) = computeTargetAnglesInDegFromGps(gps, gpsCounterpart)
-    moveToElevation(ser, curEle, tarEle,
-        minAbsSpeedAllowed, maxAbsSpeedAllowed,
-        absAngleDiffInDegForMinSpeed, absAngleDiffInDegForMaxSpeed)
+    moveToElevation(ser, curEle, tarEle, pidX)
 
 # TODO
 def computeTargetAnglesInDegFromGps(gps, gpsCounterpart):
@@ -566,9 +572,7 @@ def setServoSpeeds(ser, speedX, speedZ,
 
     setServoPwmSignals(ser, pwmX, pwmZ)
 
-def moveToElevation(ser, eleInDeg, targetEleInDeg,
-    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
-    absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10):
+def moveToElevation(ser, eleInDeg, targetEleInDeg, pidX):
     '''
     Move the rotator to get closer to the target elevation angle.
 
@@ -580,30 +584,15 @@ def moveToElevation(ser, eleInDeg, targetEleInDeg,
         * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
           - The minimum and maximum absolute servo speeds to be used. Please see
             the function setServoSpeeds for more information.
-        * absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10
-          - The absolute angle differences between the current position and the
-            target postion in degrees for dynamic servo speed adjustment. Within
-            this range, the servo speed will be set linearly according to the
-            angle difference such that the servo speed is 1) minAbsSpeedAllowed
-            at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
-            at/above angleDiffInDegForMaxSpeed.
+        * pidX
+          - The simple_pid controller for the X-axis servo.
     '''
     # Determin how large the speed should be.
-    angleDiffInDeg = targetEleInDeg-eleInDeg
-    absAngleDiffInDeg = abs(angleDiffInDeg)
-    if (absAngleDiffInDeg <= absAngleDiffInDegForMinSpeed):
-        speedX = minAbsSpeedAllowed
-    elif (absAngleDiffInDeg >= absAngleDiffInDegForMaxSpeed):
-        speedX = maxAbsSpeedAllowed
-    else:
-        speedX = np.interp(angleDiffInDeg,
-            (absAngleDiffInDegForMinSpeed, absAngleDiffInDegForMaxSpeed),
-            (minAbsSpeedAllowed, maxAbsSpeedAllowed))
-
-    # Set the rotation direction.
-    speedX = np.sign(angleDiffInDeg) * speedX
+    pidX.setpoint = targetEleInDeg
+    speedX = pidX(eleInDeg)
 
     # Adjust the X-axis servo.
+    angleDiffInDeg = targetEleInDeg-eleInDeg
     logging.info("Current elevation angle difference: ("
         + str(targetEleInDeg) + ")-(" + str(eleInDeg) + ")="
         + str(angleDiffInDeg) + " degrees...")
@@ -613,9 +602,7 @@ def moveToElevation(ser, eleInDeg, targetEleInDeg,
     return speedX
 
 # TODO
-def moveToAzimuth(ser, aziInDeg, targetAziInDeg,
-    minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1,
-    angleDiffInDegForMinSpeed = 0, angleDiffInDegForMaxSpeed = 10):
+def moveToAzimuth(ser, aziInDeg, targetAziInDeg, pidZ):
     '''
     Move the rotator to get closer to the target azimuth angle.
 
@@ -629,13 +616,8 @@ def moveToAzimuth(ser, aziInDeg, targetAziInDeg,
         * minAbsSpeedAllowed = 0, maxAbsSpeedAllowed = 1
           - The minimum and maximum absolute servo speeds to be used. Please see
             the function setServoSpeeds for more information.
-        * absAngleDiffInDegForMinSpeed = 0, absAngleDiffInDegForMaxSpeed = 10
-          - The absolute angle differences between the current position and the
-            target postion in degrees for dynamic servo speed adjustment. Within
-            this range, the servo speed will be set linearly according to the
-            angle difference such that the servo speed is 1) minAbsSpeedAllowed
-            at/below angleDiffInDegForMinSpeed and 2) maxAbsSpeedAllowed
-            at/above angleDiffInDegForMaxSpeed.
+        * pidX
+          - The simple_pid controller for the Z-axis servo.
     '''
     pass
 
@@ -770,6 +752,15 @@ def main():
                     # TODO: Fetch the latest RX loc.
                     currentGpsCounterpart = fetchRxGps()
 
+                # Initialize motor PID controllers.
+                pidX = PID(PID_P_X, PID_I_X, PID_D_X, setpoint = 0)
+                pidX.sample_time = minTimeInSToWaitForServoAdjustment
+                pidX.output_limits = PID_OUTPUT_LIMITS
+
+                pidZ = PID(PID_P_Z, PID_I_Z, PID_D_Z, setpoint = 0)
+                pidZ.sample_time = minTimeInSToWaitForServoAdjustment
+                pidZ.output_limits = PID_OUTPUT_LIMITS
+
                 while(True):
                     # Fetch and process all incoming messages from the Arduino.
                     sensorData = receiveDataFromSerial(serPortToArduino,
@@ -810,9 +801,7 @@ def main():
                         adjustServos(serPortToArduino,
                             currentGps, currentImuQuat,
                             currentGpsCounterpart,
-                            MIN_ABS_SPEED_ALLOWED, MAX_ABS_SPEED_ALLOWED,
-                            ABS_ANGLE_DIFF_IN_DEG_FOR_MIN_SPEED,
-                            ABS_ANGLE_DIFF_IN_DEG_FOR_MAX_SPEED)
+                            pidX, pidZ)
                         lastUnixTimeInSForServoAdjustment = time.time()
                         flagNeedToAdjustServos = False
             finally:
