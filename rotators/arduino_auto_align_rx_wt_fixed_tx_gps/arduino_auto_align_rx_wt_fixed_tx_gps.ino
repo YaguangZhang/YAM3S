@@ -157,11 +157,15 @@ void setup() {
 }
 
 void loop() {
-  // Stop servos if the last adjustment has last long enough time.
-  if (millis()-lastUpTimeInMsForServoAdjustment
-    >=minTimeInMsToWaitForServoAdjustment) {
-      servoX.writeMicroseconds(MID_PWM);
-      servoZ.writeMicroseconds(MID_PWM);
+  // Stop servos if the last adjustment has lasted long enough time.
+  if (lastUpTimeInMsForServoAdjustment>0) {
+    if (millis()-lastUpTimeInMsForServoAdjustment
+      >=minTimeInMsToWaitForServoAdjustment) {
+        servoX.writeMicroseconds(MID_PWM);
+        servoZ.writeMicroseconds(MID_PWM);
+        // Set timer to 0 to avoid redundant servo checks.
+        lastUpTimeInMsForServoAdjustment = 0;
+    }
   }
 
   // React to the command from the serial port with the highest priority.
