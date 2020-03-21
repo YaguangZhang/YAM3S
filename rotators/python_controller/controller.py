@@ -506,6 +506,10 @@ def adjustServos(ser, gps, imuQuat, gpsCounterpart, pidX, pidZ):
     (tarEle, tarAzi) = computeTargetAnglesInDegFromGps(gps, gpsCounterpart)
     moveToElevation(ser, curEle, tarEle, pidX)
 
+    # Return the timestamp for when the servos are adjusted.
+    lastUnixTimeInSForServoAdjustment = time.time()
+    return lastUnixTimeInSForServoAdjustment
+
 # TODO
 def computeTargetAnglesInDegFromGps(gps, gpsCounterpart):
     '''
@@ -725,7 +729,6 @@ def main():
                 # (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
                 currentGps     = None
                 currentImuQuat = None # (quatReal, quatI, quatJ, quatK)
-                currentImuMag  = None # (magX, magY, magZ)
                 # (latInDegXe7, lonInDegXe7, altInMmMeanSeaLevel)
                 currentGpsCounterpart = None
 
@@ -771,41 +774,49 @@ def main():
                     # GPS package generates 22 values.
                     if (sensorData is not None) and len(sensorData)==22:
                         newGpsSerialData = sensorData
+                        currentGps = newGpsSerialData[3:6]
+
+                        # Adjust servos first to avoid delay caused by data
+                        # uploading.
+                        lastUnixTimeInSForServoAdjustment = adjustServos(
+                            serPortToArduino,
+                            currentGps, currentImuQuat,
+                            currentGpsCounterpart,
+                            pidX, pidZ)
+
                         sendGpsDataToDatabase(
                             currentRecordSeriesId, newGpsSerialData,
                             controllerSide, databaseConnection, databaseCur)
-                        currentGps = newGpsSerialData[3:6]
-                        flagNeedToAdjustServos = True
                     # IMU package generates 11 values.
                     elif (sensorData is not None) and len(sensorData)==11:
                         newImuSerialData = sensorData
+                        currentImuQuat = newImuSerialData[2:6]
+
+                        # Adjust servos first to avoid delay caused by data
+                        # uploading.
+                        lastUnixTimeInSForServoAdjustment = adjustServos(
+                            serPortToArduino,
+                            currentGps, currentImuQuat,
+                            currentGpsCounterpart,
+                            pidX, pidZ)
+
                         sendImuDataToDatabase(
                             currentRecordSeriesId, newImuSerialData,
                             controllerSide, databaseConnection, databaseCur)
-                        currentImuQuat = newImuSerialData[2:6]
-                        currentImuMag  = newImuSerialData[7:10]
-                        flagNeedToAdjustServos = True
 
                     # Counter part GPS location can change if this is the TX
                     # side.
                     if controllerSide == 'tx':
                         lastGpsCounterpart = currentGpsCounterpart
                         currentGpsCounterpart = fetchRxGps()
-                        if ((lastGpsCounterpart is not None)
-                             and (currentGpsCounterpart is not None)
-                             and (currentGpsCounterpart != lastGpsCounterpart)):
-                            flagNeedToAdjustServos = True
-
-                    # Compute and adjust the PMW signals if necessary.
-                    if flagNeedToAdjustServos and (
-                        time.time()-lastUnixTimeInSForServoAdjustment
-                        >= minTimeInSToWaitForServoAdjustment):
-                        adjustServos(serPortToArduino,
-                            currentGps, currentImuQuat,
-                            currentGpsCounterpart,
-                            pidX, pidZ)
-                        lastUnixTimeInSForServoAdjustment = time.time()
-                        flagNeedToAdjustServos = False
+                        if ((lastGpsCounterpart is not None) and
+                            (currentGpsCounterpart is not None) and
+                            (currentGpsCounterpart != lastGpsCounterpart)):
+                            lastUnixTimeInSForServoAdjustment = adjustServos(
+                                serPortToArduino,
+                                currentGps, currentImuQuat,
+                                currentGpsCounterpart,
+                                pidX, pidZ)
             finally:
                 stopServos(serPortToArduino)
                 databaseConnection.close()

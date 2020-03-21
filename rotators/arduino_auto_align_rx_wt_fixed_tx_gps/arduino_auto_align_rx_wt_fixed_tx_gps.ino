@@ -87,9 +87,8 @@ SFE_UBLOX_GPS rtkGps;
 String newPwmStr = "";
 int newPwmValue = MID_PWM;
 
-// For limiting servo adjustment frequency.
-int maxServoAdjustmentFreqInHz = 10;
 // For limiting effective time for each servo adjustment.
+int maxServoAdjustmentFreqInHz = 10;
 volatile unsigned long lastUpTimeInMsForServoAdjustment;
 int minTimeInMsToWaitForServoAdjustment = 1000/maxServoAdjustmentFreqInHz;
 
