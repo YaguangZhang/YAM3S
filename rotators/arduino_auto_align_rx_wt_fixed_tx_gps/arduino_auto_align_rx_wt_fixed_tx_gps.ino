@@ -182,7 +182,7 @@ SIGNAL(TIMER0_COMPA_vect)
 
 void loop() {
   // React to the command from the serial port with the highest priority.
-  if (Serial.available() > 0) {
+  while (Serial.available() > 0) {
     programCommand = toLowerCase(Serial.read());
 
     switch (programCommand) {
@@ -231,11 +231,12 @@ void loop() {
         break;
     }
   }
+
   // Read the GPS data. Reference for data types:
   //   - long <=> int32_t
   //   - int  <=> int16_t
   //   - byte <=> int8_t
-  else if (rtkGps.getPVT() == true) {
+  if (rtkGps.getPVT() == true) {
     // Arduino up time.
     unsigned long upTimeInMs = millis();
 

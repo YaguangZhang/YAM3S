@@ -72,9 +72,9 @@ FLAG_COMPUTE_PWM_AT_ARDUINO = True
 
 # For fine-tuning servo adjustment when the servo speed is set by the
 # controller.
-PID_P_X = 0.03   # K_c = 0.5
-PID_I_X = 0.0018 # P_c = 0.0036
-PID_D_X = 0.00045
+PID_P_X = 0.025
+PID_I_X = 0.0025
+PID_D_X = 0.00125
 PID_P_Z = 0
 PID_I_Z = 0
 PID_D_Z = 0
@@ -95,7 +95,8 @@ def waitForDeviceOnSerial(deviceName, timeToWaitBetweenSerialScansInS=5):
     cntSerialScans = 0
     while not serPortToDevice:
         cntSerialScans = cntSerialScans+1
-        logging.info("Trial " + str(cntSerialScans) + ":")
+        logging.info("Serial connection to Arduino - Trial "
+            + str(cntSerialScans) + ":")
         curSerPorts = list(serial.tools.list_ports.comports())
         for p in curSerPorts:
             if deviceName in p.description:
@@ -523,7 +524,7 @@ def computeTargetAnglesInDegFromGps(gps, gpsCounterpart):
             respectively.
     '''
     # For testing.
-    tarEle, tarAzi = (0, 0)
+    tarEle, tarAzi = (30, 0)
     return (tarEle, tarAzi)
 
 def setServoPwmSignals(ser, pwmX, pwmZ):
